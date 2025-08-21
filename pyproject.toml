@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "soulmate"
+version = "0.1.0"
+description = "Download Spotify playlists from Soulseek (via slskd) in lossless format."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name="Your Name", email="you@example.com"}]
+dependencies = [
+    "spotipy>=2.23.0",
+    "slskd-api>=0.5.2",
+    "tqdm>=4.66.0",
+    "colorama>=0.4.6",
+    "tenacity>=8.2.2",
+    "python-dotenv>=1.0.1",
+    "requests>=2.32.3"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-mock>=3.12.0",
+    "flake8>=7.0.0",
+    "black>=24.3.0",
+    "mypy>=1.8.0",
+    "types-requests"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["main", "spotify_client", "soulseek_client", "downloader", "cli"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311"]
+
+[tool.flake8]
+max-line-length = 100
+extend-ignore = ["E203", "W503"]
+exclude = [".venv", "venv", "build", "dist"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
