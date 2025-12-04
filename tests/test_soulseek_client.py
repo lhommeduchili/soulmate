@@ -63,7 +63,7 @@ def test_search_lossless(monkeypatch):
     client = sl.SoulseekClient("http://localhost:5030", api_key="x")
     cands = client.search_lossless("Artist 1 - Song A")
     assert len(cands) == 2  # flac + wav
-    assert cands[0].filename.endswith(".flac")
+    assert cands[0].filename.endswith(".wav")
 
 
 def test_enqueue_and_wait(monkeypatch):

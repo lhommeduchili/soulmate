@@ -1,0 +1,16 @@
+LICENSE
+README.md
+pyproject.toml
+src/cli.py
+src/downloader.py
+src/main.py
+src/soulseek_client.py
+src/spotify_client.py
+src/soulmate.egg-info/PKG-INFO
+src/soulmate.egg-info/SOURCES.txt
+src/soulmate.egg-info/dependency_links.txt
+src/soulmate.egg-info/requires.txt
+src/soulmate.egg-info/top_level.txt
+tests/test_downloader.py
+tests/test_soulseek_client.py
+tests/test_spotify_client.py

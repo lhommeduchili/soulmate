@@ -7,7 +7,7 @@ from typing import Iterable, List, Tuple
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyClientCredentials
 
-from utils.formatting import extract_playlist_id
+from src.utils.formatting import extract_playlist_id
 
 
 @dataclass
@@ -27,15 +27,18 @@ class Track:
 class SpotifyClient:
     """Thin wrapper around Spotipy to fetch playlist info and tracks."""
 
-    def __init__(self) -> None:
-        client_id = os.getenv("SPOTIPY_CLIENT_ID")
-        client_secret = os.getenv("SPOTIPY_CLIENT_SECRET")
-        if not client_id or not client_secret:
-            raise RuntimeError(
-                "Missing Spotify credentials. Set SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET."
-            )
-        auth = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
-        self.sp = Spotify(auth_manager=auth)
+    def __init__(self, auth_manager=None) -> None:
+        if auth_manager:
+            self.sp = Spotify(auth_manager=auth_manager)
+        else:
+            client_id = os.getenv("SPOTIPY_CLIENT_ID")
+            client_secret = os.getenv("SPOTIPY_CLIENT_SECRET")
+            if not client_id or not client_secret:
+                raise RuntimeError(
+                    "Missing Spotify credentials. Set SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET."
+                )
+            auth = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
+            self.sp = Spotify(auth_manager=auth)
 
     def get_playlist(self, playlist_id_or_url: str) -> Tuple[str, List[Track]]:
         pid = extract_playlist_id(playlist_id_or_url)

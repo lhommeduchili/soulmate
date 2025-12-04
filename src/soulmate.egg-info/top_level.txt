@@ -1,0 +1,5 @@
+cli
+downloader
+main
+soulseek_client
+spotify_client

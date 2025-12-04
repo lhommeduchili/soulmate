@@ -1,3 +1,28 @@
+Metadata-Version: 2.4
+Name: soulmate
+Version: 0.1.0
+Summary: Download Spotify playlists from Soulseek (via slskd) in lossless format.
+Author-email: Your Name <you@example.com>
+License: MIT
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: spotipy>=2.23.0
+Requires-Dist: slskd-api>=0.5.2
+Requires-Dist: tqdm>=4.66.0
+Requires-Dist: colorama>=0.4.6
+Requires-Dist: tenacity>=8.2.2
+Requires-Dist: python-dotenv>=1.0.1
+Requires-Dist: requests>=2.32.3
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.0; extra == "dev"
+Requires-Dist: pytest-mock>=3.12.0; extra == "dev"
+Requires-Dist: flake8>=7.0.0; extra == "dev"
+Requires-Dist: black>=24.3.0; extra == "dev"
+Requires-Dist: mypy>=1.8.0; extra == "dev"
+Requires-Dist: types-requests; extra == "dev"
+Dynamic: license-file
+
 # soulmate
 
 Download a Spotify playlist as **lossless** tracks from **Soulseek** using the

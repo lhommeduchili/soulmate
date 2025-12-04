@@ -5,18 +5,19 @@ import os
 from typing import Optional
 
 from colorama import Fore, Style, init as colorama_init
+from dotenv import load_dotenv
 
-from downloader import Downloader
-from soulseek_client import SoulseekClient
-from spotify_client import SpotifyClient
-from utils.formatting import safe_filename
-from utils.logging import setup_logger
+from src.downloader import Downloader
+from src.soulseek_client import SoulseekClient
+from src.spotify_client import SpotifyClient
+from src.utils.formatting import safe_filename
+from src.utils.logging import setup_logger
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Spotify → Soulseek lossless downloader (slskd)")
     p.add_argument("--playlist", required=True, help="Spotify playlist URL or ID")
-    p.add_argument("--slskd-host", required=True, help="slskd base URL, e.g. http://localhost:5030")
+    p.add_argument("--slskd-host", required=True, help="slskd base URL, e.g. https://localhost:5030")
     auth = p.add_mutually_exclusive_group(required=True)
     auth.add_argument("--slskd-api-key", help="slskd API key configured in slskd.yml")
     auth.add_argument("--slskd-user", help="slskd username (will prompt for --slskd-pass)")
@@ -26,6 +27,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-retries", type=int, default=3, help="Max candidates to try per track")
     p.add_argument("--search-timeout-ms", type=int, default=15000, help="slskd search timeout ms")
     p.add_argument("--dry-run", action="store_true", help="Skip the actual download (for testing)")
+    p.add_argument(
+        "--preferred-format",
+        choices=["wav", "flac", "alac"],
+        default="wav",
+        help="Preferred lossless format when ranking search results",
+    )
+    p.add_argument(
+        "--allow-lossy-fallback",
+        action="store_true",
+        default=True,
+        help="If no lossless sources are found, allow falling back to other formats (e.g. MP3). Default: on.",
+    )
     return p
 
 
@@ -46,6 +59,7 @@ def banner() -> None:
 
 
 def run_cli(args: Optional[argparse.Namespace] = None) -> int:
+    load_dotenv()
     colorama_init(autoreset=True)
     logger = setup_logger()
     if args is None:
@@ -57,17 +71,24 @@ def run_cli(args: Optional[argparse.Namespace] = None) -> int:
     os.makedirs(playlist_dir, exist_ok=True)
 
     if args.slskd_api_key:
-        slsk = SoulseekClient(host=args.slskd_host, api_key=args.slskd_api_key)
+        slsk = SoulseekClient(host=args.slskd_host, api_key=args.slskd_api_key, preferred_ext=args.preferred_format)
     else:
         if not args.slskd_pass:
             raise SystemExit("--slskd-pass required when using --slskd-user")
-        slsk = SoulseekClient(host=args.slskd_host, username=args.slskd_user, password=args.slskd_pass)
+        slsk = SoulseekClient(
+            host=args.slskd_host,
+            username=args.slskd_user,
+            password=args.slskd_pass,
+            preferred_ext=args.preferred_format,
+        )
 
     dl = Downloader(
         slsk=slsk,
         slskd_download_dir=args.slskd_download_dir,
         output_dir=playlist_dir,
         max_retries=args.max_retries,
+        preferred_ext=args.preferred_format,
+        allow_lossy_fallback=args.allow_lossy_fallback,
         dry_run=args.dry_run,
     )
     ok, fail = dl.run(playlist_name, tracks)

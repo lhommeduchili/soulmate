@@ -12,7 +12,7 @@ try:
 except Exception as e:  # pragma: no cover - import-time error shown at runtime
     slskd_api = None  # type: ignore
 
-from utils.formatting import is_lossless_path, preferred_ext_score
+from src.utils.formatting import is_lossless_path, preferred_ext_score
 
 
 @dataclass
@@ -43,11 +43,13 @@ class SoulseekClient:
         password: Optional[str] = None,
         verify_ssl: bool = True,
         timeout: Optional[float] = 30.0,
+        preferred_ext: str = "wav",
     ) -> None:
         if slskd_api is None:
             raise RuntimeError(
                 "slskd-api is not installed. Please install it (`pip install slskd-api`) and ensure slskd is running."
             )
+        self.preferred_ext = preferred_ext
         self.client = slskd_api.SlskdClient(  # type: ignore[attr-defined]
             host=host,
             api_key=api_key,
@@ -57,7 +59,7 @@ class SoulseekClient:
             timeout=timeout,
         )
 
-    def _normalize_resp(self, r: Dict[str, Any]) -> Candidate:
+    def _normalize_resp(self, r: Dict[str, Any], preferred_ext: str) -> Candidate:
         """Best-effort mapping from slskd response dict to Candidate."""
         username = r.get("username") or r.get("user") or ""
         # filename may appear under different keys; 'filename' seems standard.
@@ -78,7 +80,7 @@ class SoulseekClient:
             username=username,
             filename=filename,
             size=size,
-            ext_score=preferred_ext_score(filename),
+            ext_score=preferred_ext_score(filename, preferred_ext),
             reported_speed=speed if speed is None else float(speed),
             peer_queue_len=qlen,
         )
@@ -90,8 +92,14 @@ class SoulseekClient:
         response_limit: int = 60,
         min_upload_speed_bps: int = 0,
         max_peer_queue: int = 1_000_000,
+        preferred_ext: Optional[str] = None,
+        lossless_only: bool = True,
     ) -> List[Candidate]:
-        """Run a slskd text search and return lossless candidates, best first."""
+        """Run a slskd text search and return candidates, best first.
+
+        If lossless_only is True, filter to lossless extensions; otherwise allow any.
+        """
+        preferred = (preferred_ext or self.preferred_ext).lower()
         resp = self.client.searches.search_text(  # type: ignore[attr-defined]
             searchText=query,
             fileLimit=10_000,
@@ -120,11 +128,15 @@ class SoulseekClient:
                 f = dict(f)
                 f["username"] = user
                 fname = f.get("filename") or f.get("file") or ""
-                if not fname or not is_lossless_path(fname):
+                if not fname:
                     continue
-                cand = self._normalize_resp(f)
-                if cand.ext_score > 0:
-                    candidates.append(cand)
+                if lossless_only and not is_lossless_path(fname):
+                    continue
+                cand = self._normalize_resp(f, preferred)
+                # If lossless_only, require ext_score>0; else accept any
+                if lossless_only and cand.ext_score <= 0:
+                    continue
+                candidates.append(cand)
         # sort by score (ext, speed desc, queue asc)
         candidates.sort(key=lambda c: c.score(), reverse=True)
         return candidates
@@ -133,7 +145,11 @@ class SoulseekClient:
     def enqueue_download(self, user: str, filename: str, size: int) -> bool:
         """Enqueue a download from a specific user and file."""
         files = [{"filename": filename, "size": size}]
-        return bool(self.client.transfers.enqueue(user, files))  # type: ignore[attr-defined]
+        try:
+            ok = self.client.transfers.enqueue(user, files)  # type: ignore[attr-defined]
+        except Exception as e:
+            raise RuntimeError(f"enqueue failed for {filename} from {user}: {e}")
+        return bool(ok)
 
     def wait_for_completion(
         self, user: str, target_basename: str, timeout_s: float = 600.0, poll_s: float = 2.0
@@ -162,5 +178,7 @@ class SoulseekClient:
                         return True, d
                     if state in {"failed", "error", "cancelled"}:
                         return False, d
+            time.sleep(poll_s)
+        return False, None
             time.sleep(poll_s)
         return False, None

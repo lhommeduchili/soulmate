@@ -1,7 +1,11 @@
 spotipy>=2.23.0
-slskd-api>=0.5.2
+slskd-api>=0.2.1
 tqdm>=4.66.0
 colorama>=0.4.6
-tenacity>=8.2.2
+fastapi>=0.100.0
+uvicorn>=0.22.0
+python-multipart>=0.0.6
+itsdangerous>=2.1.2
 python-dotenv>=1.0.1
+tenacity>=8.2.2
 requests>=2.32.3

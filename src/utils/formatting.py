@@ -6,7 +6,7 @@ import unicodedata
 from typing import Optional
 
 
-LOSSLESS_EXTS = {".flac", ".alac", ".wav"}
+LOSSLESS_EXTS = {".flac", ".alac", ".wav", ".ape", ".wv", ".aiff", ".aif", ".tta"}
 
 
 def slugify(value: str, allow_unicode: bool = False) -> str:
@@ -28,7 +28,7 @@ def safe_filename(name: str) -> str:
     # normalize
     name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
     # remove bad chars
-    name = re.sub(r"[\\/:*?"<>|]", "", name)
+    name = re.sub(r'[\\/:*?"<>|]', "", name)
     # collapse whitespace
     name = re.sub(r"\s+", " ", name).strip()
     return name
@@ -51,13 +51,15 @@ def is_lossless_path(path: str) -> bool:
     return ext in LOSSLESS_EXTS
 
 
-def preferred_ext_score(path: str) -> int:
-    """Higher is better. Prefer FLAC > ALAC > WAV."""
+def preferred_ext_score(path: str, preferred_ext: str = "wav") -> int:
+    """Higher is better; prioritize user-selected format."""
     ext = os.path.splitext(path.lower())[1]
-    if ext == ".flac":
-        return 3
-    if ext == ".alac":
-        return 2
-    if ext == ".wav":
-        return 1
-    return 0
+    preferred = "." + preferred_ext.lower().lstrip(".")
+    baseline_order = [preferred, ".flac", ".wav", ".alac"]
+    # Remove duplicates while preserving order
+    ordered = []
+    for e in baseline_order:
+        if e not in ordered:
+            ordered.append(e)
+    weights = {ext_name: score for score, ext_name in zip(range(len(ordered), 0, -1), ordered)}
+    return weights.get(ext, 0)
