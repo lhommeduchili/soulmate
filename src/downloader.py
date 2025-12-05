@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -30,6 +32,7 @@ class Downloader:
         preferred_ext: str = "wav",
         allow_lossy_fallback: bool = False,
         dry_run: bool = False,
+        concurrency: Optional[int] = None,
     ) -> None:
         self.slsk = slsk
         self.slskd_download_dir = slskd_download_dir
@@ -38,8 +41,11 @@ class Downloader:
         self.preferred_ext = preferred_ext
         self.allow_lossy_fallback = allow_lossy_fallback
         self.dry_run = dry_run
+        # None = default to a safe parallelism (set below).
+        self.concurrency = concurrency
         os.makedirs(self.output_dir, exist_ok=True)
         self.logger = setup_logger()
+        self._search_lock = threading.Lock()
 
     def _matrix_print(self, msg: str, progress_callback=None) -> None:
         """Send progress to callback (web UI) or stdout (CLI)."""
@@ -74,7 +80,9 @@ class Downloader:
         candidates: List[Candidate] = []
         for q in track.query_strings():
             self._matrix_print(f" · Query: {q}", progress_callback)
-            cands = self.slsk.search_lossless(q, preferred_ext=self.preferred_ext)
+            # Serialize searches to avoid slskd rate limits when running in parallel.
+            with self._search_lock:
+                cands = self.slsk.search_lossless(q, preferred_ext=self.preferred_ext)
             self._matrix_print(f"   ↳ {len(cands)} hits", progress_callback)
             for preview in cands[:5]:
                 self._matrix_print("     · " + self._candidate_label(preview), progress_callback)
@@ -91,9 +99,10 @@ class Downloader:
             # Fallback: search any format
             for q in track.query_strings():
                 self._matrix_print(f" · Query (lossy ok): {q}", progress_callback)
-                cands = self.slsk.search_lossless(
-                    q, preferred_ext=self.preferred_ext, lossless_only=False
-                )
+                with self._search_lock:
+                    cands = self.slsk.search_lossless(
+                        q, preferred_ext=self.preferred_ext, lossless_only=False
+                    )
                 self._matrix_print(f"   ↳ {len(cands)} hits", progress_callback)
                 for preview in cands[:5]:
                     self._matrix_print("     · " + self._candidate_label(preview), progress_callback)
@@ -192,44 +201,49 @@ class Downloader:
         return DownloadOutcome(track, False, msg)
 
     def run(self, playlist_name: str, tracks: List[Track], progress_callback=None, pause_handler=None) -> Tuple[int, int]:
-        """Process all tracks. progress_callback(type, data) if provided."""
-        ok = 0
-        fail = 0
+        """Process all tracks (optionally in parallel). progress_callback(type, data) if provided."""
         total = len(tracks)
-        
-        # If running in CLI mode (no callback), we might want tqdm, but for now let's keep it simple
-        # or we can inject a tqdm wrapper as the callback.
-        
-        for i, t in enumerate(tracks, start=1):
-            # Check for pause before processing each track
+        # Default to a safe small parallelism (3) unless a cap was provided.
+        pool_size = self.concurrency if self.concurrency and self.concurrency > 0 else min(3, max(1, total))
+
+        lock = threading.Lock()
+        counters = {"ok": 0, "fail": 0}
+
+        def safe_cb(type_: str, data):
+            if progress_callback:
+                with lock:
+                    progress_callback(type_, data)
+
+        def worker(i: int, t: Track):
             if pause_handler:
                 pause_handler()
+            safe_cb("progress", {"current": i, "total": total, "track": t.title})
+            outcome = self.process_track(t, progress_callback=safe_cb)
+            with lock:
+                if outcome.success:
+                    counters["ok"] += 1
+                else:
+                    counters["fail"] += 1
+                ok_now = counters["ok"]
+                fail_now = counters["fail"]
+            safe_cb(
+                "track_done",
+                {
+                    "current": i,
+                    "total": total,
+                    "track": t.title,
+                    "ok": ok_now,
+                    "fail": fail_now,
+                    "success": outcome.success,
+                    "message": outcome.message,
+                },
+            )
 
-            if progress_callback:
-                progress_callback("progress", {"current": i, "total": total, "track": t.title})
+        with ThreadPoolExecutor(max_workers=pool_size) as executor:
+            futures = [executor.submit(worker, i, t) for i, t in enumerate(tracks, start=1)]
+            # Ensure all tasks complete; exceptions will be raised here.
+            for f in as_completed(futures):
+                f.result()
 
-            outcome = self.process_track(t, progress_callback)
-
-            if outcome.success:
-                ok += 1
-            else:
-                fail += 1
-
-            if progress_callback:
-                progress_callback(
-                    "track_done",
-                    {
-                        "current": i,
-                        "total": total,
-                        "track": t.title,
-                        "ok": ok,
-                        "fail": fail,
-                        "success": outcome.success,
-                        "message": outcome.message,
-                    },
-                )
-
-        if progress_callback:
-            progress_callback("done", {"ok": ok, "fail": fail})
-
-        return ok, fail
+        safe_cb("done", {"ok": counters["ok"], "fail": counters["fail"]})
+        return counters["ok"], counters["fail"]

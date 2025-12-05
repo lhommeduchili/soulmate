@@ -6,7 +6,7 @@ web:
         role: readwrite
 directories:
   downloads: /app/downloads
-
 soulseek:
-  username: "Salvatierra.pablom@gmail.com"
-  password: "Tool1235813"
+  username: Salvatierra.pablom@gmail.com
+  password: Tool1235813
+    

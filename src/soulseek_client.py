@@ -52,8 +52,8 @@ class SoulseekClient:
                 "slskd-api is not installed. Please install it (`pip install slskd-api`) and ensure slskd is running."
             )
         self.preferred_ext = preferred_ext
-        # Keep searches snappy but avoid hammering slskd.
-        self._min_search_interval = 0.5  # seconds between calls to avoid slskd rate limit
+        # Keep searches reasonable and avoid slskd rate limits.
+        self._min_search_interval = 0.8  # seconds between calls to avoid slskd rate limit
         self._last_search_time = 0.0
         self.client = slskd_api.SlskdClient(  # type: ignore[attr-defined]
             host=host,
@@ -92,10 +92,10 @@ class SoulseekClient:
     def search_lossless(
         self,
         query: str,
-        search_timeout_ms: int = 9000,
-        response_limit: int = 25,
-        min_upload_speed_bps: int = 100_000,
-        max_peer_queue: int = 3,
+        search_timeout_ms: int = 12000,
+        response_limit: int = 60,
+        min_upload_speed_bps: int = 0,
+        max_peer_queue: int = 1_000_000,
         preferred_ext: Optional[str] = None,
         lossless_only: bool = True,
     ) -> List[Candidate]:

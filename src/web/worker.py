@@ -90,13 +90,20 @@ def _download_worker(
         output_dir = os.path.join(output_root, job_id)
         os.makedirs(output_dir, exist_ok=True)
         
+        concurrency_env = 0
+        try:
+            concurrency_env = int(os.getenv("DOWNLOADER_CONCURRENCY", "0") or 0)
+        except Exception:
+            concurrency_env = 0
+
         dl = Downloader(
             slsk=slsk_client,
             slskd_download_dir=slskd_download_dir,
             output_dir=output_dir,
-            max_retries=4,
+            max_retries=3,
             preferred_ext=preferred_format,
             allow_lossy_fallback=allow_lossy_fallback,
+            concurrency=concurrency_env if concurrency_env > 0 else None,
         )
         
         def progress_cb(type_: str, data: Any):
