@@ -5,3 +5,4 @@ slskd_local/downloads/
 # OS metadata
 .DS_Store
 slskd_local/.DS_Store
+.cache
