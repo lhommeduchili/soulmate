@@ -30,15 +30,27 @@ app.add_middleware(
 app.include_router(api_router)
 
 # Mount frontend static files last (catch-all)
-# Mount assets specifically
-if os.path.exists("dist/assets"):
-    app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+# Mount frontend static files last (catch-all)
+# Use absolute path to ensure we find the dist folder regardless of where uvicorn is run from
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
+ASSETS_DIR = os.path.join(DIST_DIR, "assets")
+
+if os.path.exists(ASSETS_DIR):
+    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+
 if os.path.exists("downloads"):
     app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
 
 # Catch-all for SPA (serve index.html for any other route)
 @app.get("/{full_path:path}")
 async def catch_all(full_path: str):
-    if os.path.exists("dist/index.html"):
-        return FileResponse("dist/index.html")
+    # Check if it's a file in dist (e.g. vite.svg)
+    potential_path = os.path.join(DIST_DIR, full_path)
+    if os.path.exists(potential_path) and os.path.isfile(potential_path):
+        return FileResponse(potential_path)
+        
+    index_path = os.path.join(DIST_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
     return {"message": "Frontend not built. Run 'npm run build' in src/web/frontend"}

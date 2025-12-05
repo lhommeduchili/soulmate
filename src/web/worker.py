@@ -113,6 +113,14 @@ def _download_worker(
                 job.ok_count = data["ok"]
                 job.fail_count = data["fail"]
                 job.processed_tracks = data["current"]
+                # Update file list incrementally
+                collected = []
+                for root, _, files in os.walk(output_dir):
+                    for file in files:
+                        abs_path = os.path.join(root, file)
+                        rel_path = os.path.relpath(abs_path, output_root)
+                        collected.append(rel_path)
+                job.files = sorted(collected)
             elif type_ == "done":
                 job.ok_count = data["ok"]
                 job.fail_count = data["fail"]

@@ -313,8 +313,9 @@ def download_job_file(job_id: str, file_path: str):
 def download_job_archive(job_id: str, background_tasks: BackgroundTasks):
     """Bundle all files for a job into a zip and send it."""
     job = JOBS.get(job_id)
-    if not job or job.status != "completed":
-        raise HTTPException(status_code=400, detail="Job not ready")
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    # Allow archiving even if running (will zip what we have so far)
     output_root = os.getenv("OUTPUT_ROOT", "downloads")
     safe_root = os.path.abspath(output_root)
     if not job.files:

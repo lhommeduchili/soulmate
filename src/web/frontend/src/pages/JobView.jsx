@@ -31,9 +31,12 @@ export default function JobView() {
             const res = await axios.get(`/api/jobs/${jobId}`);
             setJob(res.data);
             setJobError(null);
+
+            // Always fetch files to show progress
+            fetchFiles();
+
             if (res.data.status === 'completed' || res.data.status === 'failed') {
                 if (intervalRef.current) clearInterval(intervalRef.current);
-                fetchFiles();
             }
         } catch (err) {
             console.error(err);
@@ -89,7 +92,7 @@ export default function JobView() {
                         </div>
                     </div>
 
-                    {job.status === 'completed' && files.length > 0 && (
+                    {files.length > 0 && (
                         <div className="flex gap-2">
                             <a
                                 href={`/api/jobs/${jobId}/archive`}
@@ -97,13 +100,6 @@ export default function JobView() {
                                 download
                             >
                                 <Download size={16} /> Descargar todas (ZIP)
-                            </a>
-                            <a
-                                href={`/api/jobs/${jobId}/files/${encodeURIComponent(files[0])}`}
-                                className="btn btn-secondary flex items-center gap-2"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                <FolderOpen size={16} /> Abrir primera
                             </a>
                         </div>
                     )}
@@ -124,7 +120,7 @@ export default function JobView() {
                 </div>
 
                 {job.status === 'running' && (
-                    <div className="flex items-center gap-3 text-[#00ff41] animate-pulse">
+                    <div className="flex items-center gap-3 text-[#00ff41] animate-pulse mb-4">
                         <Loader size={20} className="animate-spin" />
                         <span>Processing: {job.current_track_name || "Initializing..."}</span>
                         {(job.current_download_percent > 0 || job.current_download_state) && (
@@ -135,42 +131,25 @@ export default function JobView() {
                     </div>
                 )}
                 {job.status === 'failed' && (
-                    <div className="text-red-400 text-sm">
+                    <div className="text-red-400 text-sm mb-4">
                         Job failed. Check the log below for details.
                     </div>
                 )}
             </div>
 
-            {/* Terminal/Logs */}
-            <div className="bg-black border border-gray-800 rounded-lg p-4 font-mono text-sm h-96 overflow-y-auto" ref={scrollRef}>
-                {job.logs.map((log, i) => (
-                    <div key={i} className="mb-1 text-gray-300 border-l-2 border-transparent hover:border-gray-700 pl-2">
-                        <span className="text-green-900 mr-2">$</span>
-                        {log}
-                    </div>
-                ))}
-                {job.logs.length === 0 && <span className="text-gray-700">Waiting for logs...</span>}
-            </div>
-
-            {job.status === 'completed' && files.length > 0 && (
-                <div className="card mt-6">
+            {/* Files List */}
+            {files.length > 0 && (
+                <div className="card mb-8">
                     <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-xl font-bold">Archivos</h2>
-                        <a
-                            href={`/api/jobs/${jobId}/archive`}
-                            className="text-sm text-[#00ff41] hover:underline flex items-center gap-2"
-                            download
-                        >
-                            <Download size={16} /> Descargar todas
-                        </a>
+                        <h2 className="text-xl font-bold">Archivos Encontrados ({files.length})</h2>
                     </div>
-                    <div className="divide-y divide-gray-800">
+                    <div className="divide-y divide-gray-800 max-h-96 overflow-y-auto">
                         {files.map((f) => (
-                            <div key={f} className="py-2 flex items-center justify-between text-sm">
-                                <span className="text-gray-200 truncate">{f.split('/').pop()}</span>
+                            <div key={f} className="py-2 flex items-center justify-between text-sm hover:bg-white/5 px-2 rounded">
+                                <span className="text-gray-200 truncate flex-1 mr-4">{f.split('/').pop()}</span>
                                 <a
                                     href={`/api/jobs/${jobId}/files/${encodeURIComponent(f)}`}
-                                    className="text-[#00ff41] hover:underline flex items-center gap-1"
+                                    className="text-[#00ff41] hover:underline flex items-center gap-1 whitespace-nowrap"
                                     download
                                 >
                                     <Download size={14} /> Descargar
@@ -180,6 +159,17 @@ export default function JobView() {
                     </div>
                 </div>
             )}
+
+            {/* Terminal/Logs */}
+            <div className="bg-black border border-gray-800 rounded-lg p-4 font-mono text-sm h-64 overflow-y-auto" ref={scrollRef}>
+                {job.logs.map((log, i) => (
+                    <div key={i} className="mb-1 text-gray-300 border-l-2 border-transparent hover:border-gray-700 pl-2">
+                        <span className="text-green-900 mr-2">$</span>
+                        {log}
+                    </div>
+                ))}
+                {job.logs.length === 0 && <span className="text-gray-700">Waiting for logs...</span>}
+            </div>
         </div>
     );
 }
