@@ -3,6 +3,13 @@
 
 echo "🔒 Setting up HTTPS for localhost..."
 
+# Ensure virtualenv exists
+if [ ! -d ".venv" ]; then
+    echo "❌ Virtual environment not found. Please run:"
+    echo "   python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt"
+    exit 1
+fi
+
 # Generate certificates if they don't exist
 if [ ! -f "certs/localhost-key.pem" ]; then
     echo "Generating SSL certificates..."
@@ -12,6 +19,13 @@ if [ ! -f "certs/localhost-key.pem" ]; then
     mv localhost+2.pem localhost.pem
     cd ..
     echo "✅ Certificates created!"
+fi
+
+# Ensure frontend build is present
+if [ ! -d "dist" ]; then
+    echo "⚠️  Frontend not built. Building now..."
+    cd src/web/frontend && npm run build && cd ../../..
+    cp -r src/web/frontend/dist ./dist
 fi
 
 echo "🚀 Starting server with HTTPS on https://localhost:8000"

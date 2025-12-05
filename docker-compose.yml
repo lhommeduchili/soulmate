@@ -1,11 +1,30 @@
 version: "3"
 services:
+  backend:
+    build: .
+    container_name: soulmate-backend
+    env_file:
+      - .env
+    environment:
+      - SLSKD_HOST=http://slskd:5030
+      - SLSKD_DOWNLOAD_DIR=/downloads/slskd
+      - OUTPUT_ROOT=/downloads/out
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - ./slskd_local/downloads:/downloads/slskd
+      - ./downloads:/downloads/out
+    depends_on:
+      - slskd
+
   slskd:
     image: slskd/slskd:latest
     container_name: soulmate-slskd
     ports:
       - "5030:5030"
       - "50300:50300"
+      - "50300:50300/udp"
     environment:
       - SLSKD_REMOTE_CONFIGURATION=true
     volumes:

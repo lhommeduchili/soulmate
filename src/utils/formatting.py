@@ -55,7 +55,8 @@ def preferred_ext_score(path: str, preferred_ext: str = "wav") -> int:
     """Higher is better; prioritize user-selected format."""
     ext = os.path.splitext(path.lower())[1]
     preferred = "." + preferred_ext.lower().lstrip(".")
-    baseline_order = [preferred, ".flac", ".wav", ".alac"]
+    # Ranking: user preference first, then other lossless contenders
+    baseline_order = [preferred, ".flac", ".wav", ".alac", ".aiff", ".aif"]
     # Remove duplicates while preserving order
     ordered = []
     for e in baseline_order:
@@ -63,3 +64,11 @@ def preferred_ext_score(path: str, preferred_ext: str = "wav") -> int:
             ordered.append(e)
     weights = {ext_name: score for score, ext_name in zip(range(len(ordered), 0, -1), ordered)}
     return weights.get(ext, 0)
+
+
+def basename_any(path: str) -> str:
+    """Return filename component regardless of slash type (handles Windows paths on *nix)."""
+    normalized = path.replace("\\", "/")
+    if "/" not in normalized:
+        return normalized
+    return normalized.rsplit("/", 1)[-1]

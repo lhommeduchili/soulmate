@@ -12,6 +12,7 @@ export default function Dashboard() {
     const [preferredFormat, setPreferredFormat] = useState('flac');
     const [query, setQuery] = useState('');
     const [allowLossy, setAllowLossy] = useState(true);
+    const [trackLimit, setTrackLimit] = useState('');
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -43,11 +44,13 @@ export default function Dashboard() {
     const startDownload = async (id) => {
         try {
             const tokenInfo = getToken();
+            const parsedLimit = trackLimit ? parseInt(trackLimit, 10) : null;
             const res = await axios.post('/api/download', {
                 playlist_id: id,
                 token_info: tokenInfo,
                 preferred_format: preferredFormat,
                 allow_lossy_fallback: allowLossy,
+                track_limit: parsedLimit,
             });
             navigate(`/job/${res.data.job_id}`);
         } catch (err) {
@@ -86,9 +89,9 @@ export default function Dashboard() {
                             onChange={(e) => setPreferredFormat(e.target.value)}
                             className="input w-32"
                         >
-                            <option value="wav">WAV</option>
                             <option value="flac">FLAC</option>
-                            <option value="alac">ALAC</option>
+                            <option value="wav">WAV</option>
+                            <option value="aiff">AIFF</option>
                         </select>
                         <label className="flex items-center gap-2 text-sm text-gray-400">
                             <input
@@ -98,6 +101,17 @@ export default function Dashboard() {
                             />
                             Allow lossy fallback
                         </label>
+                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                            <span>Track cap</span>
+                            <input
+                                type="number"
+                                min="1"
+                                className="input w-24"
+                                placeholder="optional"
+                                value={trackLimit}
+                                onChange={(e) => setTrackLimit(e.target.value)}
+                            />
+                        </div>
                     </div>
                 </div>
                 <div className="search-bar">

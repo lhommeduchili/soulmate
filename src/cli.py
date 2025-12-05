@@ -29,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true", help="Skip the actual download (for testing)")
     p.add_argument(
         "--preferred-format",
-        choices=["wav", "flac", "alac"],
+        choices=["wav", "flac", "aiff", "alac"],
         default="wav",
         help="Preferred lossless format when ranking search results",
     )

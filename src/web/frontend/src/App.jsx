@@ -25,15 +25,15 @@ function AuthHandler({ children }) {
 
                 // Save to local storage
                 setToken(tokenInfo);
-        console.log("Token saved successfully");
+                console.log("Token saved successfully");
 
-        // Clear URL and redirect to dashboard (root)
-        navigate('/', { replace: true });
-      } catch (e) {
-        console.error("Failed to parse auth data", e);
-      }
-    }
-  }, [location, navigate]);
+                // Clear URL and redirect to dashboard (root)
+                navigate('/', { replace: true });
+            } catch (e) {
+                console.error("Failed to parse auth data", e);
+            }
+        }
+    }, [location, navigate]);
 
   return children;
 }

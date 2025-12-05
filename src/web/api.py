@@ -1,18 +1,22 @@
 import os
 import json
 import base64
-from typing import Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Request, Header
+from typing import Optional, Dict, Any, List
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, BackgroundTasks
 from fastapi.responses import RedirectResponse, FileResponse
 from spotipy.oauth2 import SpotifyOAuth
 from urllib.parse import quote
 import shutil
-import os
+import tempfile
+import zipfile
 
 from src.web.state import JOBS
 from src.web.worker import start_download_job
 from src.spotify_client import Track, SpotifyClient
-from src.utils.formatting import safe_filename, is_lossless_path
+from src.soulseek_client import SoulseekClient, Candidate
+from src.utils.formatting import basename_any, safe_filename, is_lossless_path
+
+ALLOWED_FORMATS = {"wav", "flac", "aiff"}
 
 router = APIRouter(prefix="/api")
 
@@ -114,6 +118,7 @@ class DownloadRequest(BaseModel):
     token_info: Dict[str, Any]
     preferred_format: str = "wav"
     allow_lossy_fallback: bool = True
+    track_limit: Optional[int] = None
 
 class CandidateOut(BaseModel):
     username: str
@@ -139,6 +144,12 @@ class DownloadCandidateRequest(BaseModel):
 def start_download(req: DownloadRequest):
     # We need full token_info for the background worker (to refresh if needed)
     token_info = req.token_info
+    preferred_format = (req.preferred_format or "wav").lower()
+    if preferred_format not in ALLOWED_FORMATS:
+        raise HTTPException(status_code=400, detail="Formato no soportado. Usa wav, flac o aiff.")
+    track_limit = req.track_limit
+    if track_limit is not None and track_limit <= 0:
+        track_limit = None
     
     slskd_host = os.getenv("SLSKD_HOST")
     slskd_api_key = os.getenv("SLSKD_API_KEY")
@@ -153,8 +164,9 @@ def start_download(req: DownloadRequest):
         slskd_host=slskd_host,
         slskd_api_key=slskd_api_key,
         slskd_download_dir=slskd_download_dir,
-        preferred_format=req.preferred_format.lower(),
+        preferred_format=preferred_format,
         allow_lossy_fallback=req.allow_lossy_fallback,
+        track_limit=track_limit,
     )
     return {"job_id": job_id}
 
@@ -171,10 +183,7 @@ def _candidate_to_dict(c) -> Dict[str, Any]:
 @router.get("/playlists/{playlist_id}/candidates")
 def get_candidates(playlist_id: str, token_data: Dict = Depends(get_current_user_token), limit_per_track: int = 5):
     """Return top candidates per track (preview) without downloading."""
-    # Spotify client with user token
-    import spotipy
-    sp_client = SpotifyClient(auth_manager=None)
-    sp_client.sp = spotipy.Spotify(auth=token_data["access_token"])
+    sp_client = SpotifyClient(access_token=token_data["access_token"])
     playlist_name, tracks = sp_client.get_playlist(playlist_id)
 
     slskd_host = os.getenv("SLSKD_HOST")
@@ -185,8 +194,16 @@ def get_candidates(playlist_id: str, token_data: Dict = Depends(get_current_user
 
     result: List[Dict[str, Any]] = []
     for t in tracks:
-        cands = slsk_client.search_lossless(str(t), preferred_ext="flac", lossless_only=False, response_limit=40)
-        # take top N
+        seen = set()
+        cands: List[Candidate] = []
+        for q in t.query_strings():
+            for c in slsk_client.search_lossless(q, preferred_ext="flac", lossless_only=False, response_limit=40):
+                key = (c.username, c.filename)
+                if key in seen:
+                    continue
+                seen.add(key)
+                cands.append(c)
+        # take top N by current sort order
         cands = cands[:limit_per_track]
         result.append(
             {
@@ -212,26 +229,33 @@ def download_candidate(req: DownloadCandidateRequest):
     cand = req.candidate
 
     slsk_client = SoulseekClient(host=slskd_host, api_key=slskd_api_key, preferred_ext="flac")
+    base_remote = basename_any(cand.filename)
+
+    def locate_download() -> Optional[str]:
+        direct = os.path.join(slskd_download_dir, base_remote)
+        if os.path.exists(direct):
+            return direct
+        for root, _, files in os.walk(slskd_download_dir):
+            for f in files:
+                if f == base_remote:
+                    return os.path.join(root, f)
+        return None
+
     # enqueue
     try:
         slsk_client.enqueue_download(cand.username, cand.filename, cand.size)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Enqueue failed: {e}")
-    base_remote = os.path.basename(cand.filename)
-    ok, meta = slsk_client.wait_for_completion(cand.username, base_remote, timeout_s=1800.0)
-    if not ok:
+    ok, meta = slsk_client.wait_for_completion(
+        cand.username,
+        base_remote,
+        timeout_s=1800.0,
+        file_finder=locate_download,
+    )
+    src_guess = locate_download()
+    if not ok and not src_guess:
         raise HTTPException(status_code=400, detail="Download failed or timed out")
-
-    src_guess = os.path.join(slskd_download_dir, base_remote)
-    if not os.path.exists(src_guess):
-        for root, _, files in os.walk(slskd_download_dir):
-            for f in files:
-                if f == base_remote:
-                    src_guess = os.path.join(root, f)
-                    break
-            if os.path.exists(src_guess):
-                break
-    if not os.path.exists(src_guess):
+    if not src_guess:
         raise HTTPException(status_code=404, detail="Downloaded file not found in slskd directory")
 
     ext = os.path.splitext(src_guess)[1]
@@ -257,11 +281,60 @@ def get_job(job_id: str):
 @router.get("/jobs/{job_id}/download")
 def download_job_result(job_id: str):
     job = JOBS.get(job_id)
+    raise HTTPException(status_code=400, detail="Direct downloads only; access files under /downloads/")
+
+
+@router.get("/jobs/{job_id}/files")
+def list_job_files(job_id: str):
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"files": job.files}
+
+
+@router.get("/jobs/{job_id}/files/{file_path:path}")
+def download_job_file(job_id: str, file_path: str):
+    job = JOBS.get(job_id)
     if not job or job.status != "completed":
         raise HTTPException(status_code=400, detail="Job not ready")
-    
-    return FileResponse(
-        job.result_path,
-        media_type='application/zip',
-        filename=f"{job.playlist_name}.zip"
-    )
+    output_root = os.getenv("OUTPUT_ROOT", "downloads")
+    # Prevent path traversal
+    safe_root = os.path.abspath(output_root)
+    full_path = os.path.abspath(os.path.join(output_root, file_path))
+    if not full_path.startswith(safe_root):
+        raise HTTPException(status_code=400, detail="Invalid file path")
+    if not os.path.exists(full_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    filename = os.path.basename(full_path)
+    return FileResponse(full_path, media_type="application/octet-stream", filename=filename)
+
+
+@router.get("/jobs/{job_id}/archive")
+def download_job_archive(job_id: str, background_tasks: BackgroundTasks):
+    """Bundle all files for a job into a zip and send it."""
+    job = JOBS.get(job_id)
+    if not job or job.status != "completed":
+        raise HTTPException(status_code=400, detail="Job not ready")
+    output_root = os.getenv("OUTPUT_ROOT", "downloads")
+    safe_root = os.path.abspath(output_root)
+    if not job.files:
+        raise HTTPException(status_code=404, detail="No files to archive")
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    tmp_path = tmp.name
+    tmp.close()
+
+    with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for rel_path in job.files:
+            full_path = os.path.abspath(os.path.join(output_root, rel_path))
+            if not full_path.startswith(safe_root):
+                continue
+            if not os.path.exists(full_path):
+                continue
+            arcname = os.path.basename(full_path)
+            zf.write(full_path, arcname=arcname)
+
+    # remove temp file after response is sent
+    background_tasks.add_task(os.remove, tmp_path)
+    zip_name = safe_filename(f"{job.playlist_name or 'soulmate'}.zip")
+    return FileResponse(tmp_path, media_type="application/zip", filename=zip_name)

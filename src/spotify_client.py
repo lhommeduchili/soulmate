@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyClientCredentials
@@ -27,8 +27,10 @@ class Track:
 class SpotifyClient:
     """Thin wrapper around Spotipy to fetch playlist info and tracks."""
 
-    def __init__(self, auth_manager=None) -> None:
-        if auth_manager:
+    def __init__(self, auth_manager=None, access_token: Optional[str] = None) -> None:
+        if access_token:
+            self.sp = Spotify(auth=access_token)
+        elif auth_manager:
             self.sp = Spotify(auth_manager=auth_manager)
         else:
             client_id = os.getenv("SPOTIPY_CLIENT_ID")

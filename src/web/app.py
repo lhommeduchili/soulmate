@@ -33,6 +33,8 @@ app.include_router(api_router)
 # Mount assets specifically
 if os.path.exists("dist/assets"):
     app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+if os.path.exists("downloads"):
+    app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
 
 # Catch-all for SPA (serve index.html for any other route)
 @app.get("/{full_path:path}")

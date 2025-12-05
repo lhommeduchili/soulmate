@@ -31,6 +31,12 @@ class DummySearchesApi:
                     {"filename": "/Music/Artist 1 - Song A.wav", "size": 1234567, "uploadSpeed": 1000000, "queueLength": 1},
                 ],
             },
+            {
+                "username": "u3",
+                "files": [
+                    {"filename": "/Music/Artist 1 - Song A.ape", "size": 2345678, "uploadSpeed": 800000, "queueLength": 2},
+                ],
+            },
         ]
 
 
@@ -62,8 +68,9 @@ def test_search_lossless(monkeypatch):
     monkeypatch.setattr(sl, "slskd_api", types.SimpleNamespace(SlskdClient=lambda **kw: DummyClient()))
     client = sl.SoulseekClient("http://localhost:5030", api_key="x")
     cands = client.search_lossless("Artist 1 - Song A")
-    assert len(cands) == 2  # flac + wav
+    assert len(cands) == 3  # flac + wav + ape
     assert cands[0].filename.endswith(".wav")
+    assert any(c.filename.endswith(".ape") for c in cands)
 
 
 def test_enqueue_and_wait(monkeypatch):

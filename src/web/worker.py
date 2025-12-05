@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import threading
-import uuid
 import os
 import shutil
-import zipfile
-from typing import Any, List
+import threading
+import uuid
+from typing import Any, List, Optional, Tuple
 
-from src.spotify_client import Track, SpotifyClient
+from src.spotify_client import SpotifyClient
 from src.soulseek_client import SoulseekClient
 from src.downloader import Downloader
 from src.web.state import JOBS, JobState
@@ -20,7 +19,9 @@ def start_download_job(
     slskd_download_dir: str,
     preferred_format: str = "wav",
     allow_lossy_fallback: bool = True,
+    track_limit: Optional[int] = None,
 ) -> str:
+    """Bootstrap a background download job and return its job_id."""
     job_id = str(uuid.uuid4())
     
     # Initialize job state
@@ -47,6 +48,7 @@ def start_download_job(
             slskd_download_dir,
             preferred_format,
             allow_lossy_fallback,
+            track_limit,
         ),
         daemon=True
     )
@@ -63,39 +65,29 @@ def _download_worker(
     slskd_download_dir: str,
     preferred_format: str,
     allow_lossy_fallback: bool,
+    track_limit: Optional[int],
 ):
+    """Background thread: fetch playlist, search on slskd, download, zip, update JOBS."""
     job = JOBS[job_id]
     job.status = "running"
+    job.logs.append(f"Job {job_id} started · format={preferred_format} · lossy_ok={allow_lossy_fallback}")
     
     try:
-        # Setup clients
-        # We need a custom auth manager that uses the token we got
-        from spotipy.oauth2 import SpotifyOAuth
-        # Re-construct auth manager to refresh if needed, or just use the token
-        # For simplicity, let's assume the token is valid for the duration or we use a fresh client
-        # Ideally we pass the token_info to SpotifyClient
-        
-        # Hack: Create a dummy auth manager or just pass the token to Spotify if we modify SpotifyClient further
-        # But our modified SpotifyClient takes an auth_manager.
-        # Let's use a custom one or just a raw Spotify object if we could.
-        # Actually, spotipy.Spotify(auth=token) works if we have the access token string.
-        
-        sp_client = SpotifyClient(auth_manager=None) 
-        # Wait, we need to inject the user auth. 
-        # Let's modify SpotifyClient to accept a raw token or just bypass it here.
-        import spotipy
-        sp_client.sp = spotipy.Spotify(auth=token_info['access_token'])
-        
+        sp_client, token_info = _build_spotify_client(token_info)
+
         playlist_name, tracks = sp_client.get_playlist(playlist_id)
+        if track_limit:
+            tracks = tracks[:track_limit]
+            job.logs.append(f"Track limit applied: first {len(tracks)} tracks")
         job.playlist_name = playlist_name
         job.total_tracks = len(tracks)
+        job.logs.append(f"Playlist: {playlist_name} ({job.total_tracks} tracks queued)")
         
-        # Setup Soulseek
         slsk_client = SoulseekClient(host=slskd_host, api_key=slskd_api_key, preferred_ext=preferred_format)
         
-        # Setup Downloader
-        # We need a temporary output dir for this job
-        output_dir = os.path.join("downloads", job_id)
+        output_root = os.getenv("OUTPUT_ROOT", "downloads")
+        os.makedirs(output_root, exist_ok=True)
+        output_dir = os.path.join(output_root, job_id)
         os.makedirs(output_dir, exist_ok=True)
         
         dl = Downloader(
@@ -110,37 +102,77 @@ def _download_worker(
         def progress_cb(type_: str, data: Any):
             if type_ == "log":
                 job.logs.append(data)
-                # Keep logs trimmed if needed
-                if len(job.logs) > 100:
+                if len(job.logs) > 200:
                     job.logs.pop(0)
             elif type_ == "progress":
                 job.current_track_index = data["current"]
                 job.current_track_name = data["track"]
+                job.current_download_percent = 0.0
+                job.current_download_state = ""
+            elif type_ == "track_done":
+                job.ok_count = data["ok"]
+                job.fail_count = data["fail"]
+                job.processed_tracks = data["current"]
             elif type_ == "done":
                 job.ok_count = data["ok"]
                 job.fail_count = data["fail"]
+                job.processed_tracks = job.total_tracks
+                job.current_download_percent = 0.0
+                job.current_download_state = ""
+            elif type_ == "download_progress":
+                job.current_download_percent = data.get("percent", 0.0)
+                job.current_download_state = data.get("state", "")
         
         dl.run(playlist_name, tracks, progress_callback=progress_cb)
         
-        # Zip the result
-        zip_path = os.path.join("downloads", f"{job_id}.zip")
-        _zip_directory(output_dir, zip_path)
-        
-        job.result_path = zip_path
+        # Collect files for direct download (no zip)
+        collected = []
+        for root, _, files in os.walk(output_dir):
+            for file in files:
+                abs_path = os.path.join(root, file)
+                rel_path = os.path.relpath(abs_path, output_root)
+                collected.append(rel_path)
+        job.files = sorted(collected)
+        job.result_path = output_dir
         job.status = "completed"
-        
-        # Cleanup raw files
-        shutil.rmtree(output_dir, ignore_errors=True)
         
     except Exception as e:
         job.status = "failed"
         job.logs.append(f"Error: {str(e)}")
         print(f"Job {job_id} failed: {e}")
 
+
+def _build_spotify_client(token_info: dict) -> Tuple[SpotifyClient, dict]:
+    """Create a SpotifyClient that can refresh the token_info if expired."""
+    from spotipy.oauth2 import SpotifyOAuth
+
+    client_id = os.getenv("SPOTIPY_CLIENT_ID")
+    client_secret = os.getenv("SPOTIPY_CLIENT_SECRET")
+    redirect_uri = os.getenv("SPOTIPY_REDIRECT_URI")
+    if not client_id or not client_secret:
+        raise RuntimeError("Spotify credentials missing on server")
+
+    auth_manager = SpotifyOAuth(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=redirect_uri,
+        scope="user-library-read playlist-read-private",
+        cache_handler=None,
+    )
+    refreshed = token_info
+    try:
+        if auth_manager.is_token_expired(token_info):
+            refresh_token = token_info.get("refresh_token")
+            if not refresh_token:
+                raise RuntimeError("Spotify token expired and no refresh_token available")
+            refreshed = auth_manager.refresh_access_token(refresh_token)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to refresh Spotify token: {exc}") from exc
+
+    client = SpotifyClient(access_token=refreshed["access_token"])
+    return client, refreshed
+
 def _zip_directory(folder_path, zip_path):
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for root, _, files in os.walk(folder_path):
-            for file in files:
-                file_path = os.path.join(root, file)
-                arcname = os.path.relpath(file_path, folder_path)
-                zipf.write(file_path, arcname)
+    """Zip a whole folder preserving relative paths."""
+    # Deprecated: zipping disabled in favor of direct file download
+    raise RuntimeError("Zipping disabled; use direct file downloads.")

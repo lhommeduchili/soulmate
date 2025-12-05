@@ -141,7 +141,13 @@ class Downloader:
                         },
                     )
 
-            ok, meta = self.slsk.wait_for_completion(cand.username, base_remote, timeout_s=240.0, progress_cb=dl_progress)
+            ok, meta = self.slsk.wait_for_completion(
+                cand.username,
+                base_remote,
+                timeout_s=120.0,
+                progress_cb=dl_progress,
+                file_finder=lambda: self._find_downloaded_file(base_remote),
+            )
             if not ok:
                 # Check if the file exists even if slskd didn't report completion (some peers block state updates)
                 found = self._find_downloaded_file(base_remote)
@@ -170,7 +176,7 @@ class Downloader:
                     return DownloadOutcome(track, False, f"Downloaded file not lossless: {final_ext}")
                 # Accept lossy when explicitly allowed
                 self.logger.info("Accepting lossy download because fallback is enabled")
-            final_name = safe_filename(f"{track.artist} - {track.title}{final_ext}" )
+            final_name = safe_filename(f"{track.artist} - {track.title}{final_ext}")
             dst_path = os.path.join(self.output_dir, final_name)
             os.makedirs(self.output_dir, exist_ok=True)
             try:

@@ -1,111 +1,62 @@
 # soulmate
 
-Download a Spotify playlist as **lossless** tracks from **Soulseek** using the
-[slskd](https://github.com/slskd/slskd) daemon and the Spotify Web API via
-[Spotipy](https://spotipy.readthedocs.io).
+Web app + CLI para bajar playlists de Spotify desde Soulseek (slskd) en la mejor calidad posible.
 
----
+## Qué hace (v1)
+- OAuth con Spotify, selección de playlist y formato preferido (WAV / FLAC / AIFF).
+- Ranking automático de candidatos: extensión preferida → lossless primero → velocidad reportada → cola baja.
+- Búsquedas con throttle y reintentos en 429; dedupe por (usuario, archivo); acepta rutas Windows/Unix.
+- Descarga track a track desde slskd, espera a que termine, normaliza el nombre y empaqueta todo en un ZIP final.
+- Progreso en vivo (tracks procesados/pending) y log en tiempo real desde FastAPI.
+- Frontend SPA (React/Vite) mínimo pero funcional; backend FastAPI; despliegue local via Docker Compose (slskd + backend).
 
-## Features
+## Variables de entorno
+Coloca un `.env` en la raíz con:
+```
+SPOTIPY_CLIENT_ID=...
+SPOTIPY_CLIENT_SECRET=...
+SPOTIPY_REDIRECT_URI=http://localhost:8000/api/auth/callback
+SLSKD_API_KEY=...
+# Opcional:
+OUTPUT_ROOT=./downloads
+```
+slskd se configura vía `slskd_local/config/slskd.yml` (incluye el API key).
 
-- Fetch playlist metadata (artist, title, album) from Spotify.
-- Search Soulseek via **slskd** for each track.
-- Filter results to **lossless** formats only (FLAC, ALAC, WAV).
-- Rank sources by a heuristic (extension preference, reported upload speed, queue length).
-- Retry failovers automatically when a source fails.
-- CLI with `tqdm` progress bars and a fun **Matrix green** aesthetic.
-- Files saved into a directory named after the playlist, as `Artist - Title.<ext>`.
+## Arranque rápido (local)
+1. Python deps: `python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`.
+2. Frontend: `cd src/web/frontend && npm install && npm run build`.
+3. Copia el build al backend (si `start_server.sh` no lo hace solo): `cp -r src/web/frontend/dist ./dist`.
+4. Inicia slskd: `docker-compose up slskd`.
+5. Backend: `./start_server.sh` (o `uvicorn src.web.app:app --host 0.0.0.0 --port 8000 --reload` con la venv activada).
 
-## How it works
+## Arranque rápido (Docker Compose)
+1. Asegúrate de tener el build del frontend (`npm run build` en `src/web/frontend`).
+2. `docker-compose up --build backend slskd`.
+   - Backend en `http://localhost:8000`.
+   - slskd expuesto en `http://localhost:5030`.
 
-- Spotify: uses **Spotipy** (client-credentials) to read public playlist items. See Spotify Web API docs for playlist tracks.  
-  References: Spotipy docs and Spotify Web API reference.  
-- Soulseek: talks to your **slskd** instance using the **slskd-api** Python client.  
-  Key endpoints: `SearchesApi.search_text/search_responses`, `TransfersApi.enqueue/get_all_downloads`.
+## Uso del frontend
+1. Abre `http://localhost:8000`.
+2. Login con Spotify → vuelve con el token guardado en localStorage.
+3. Selecciona playlist, formato preferido (WAV/FLAC/AIFF), decide si permitir fallback lossy y define un límite opcional de tracks.
+4. Pulsa “Download”: se crea un job; abre la vista del job para ver progreso/log y descargar el ZIP final.
 
-Links:
-- slskd API python client docs (searches/transfers): see *SearchesApi* and *TransfersApi* pages.  
-- Spotipy quickstart (credentials) and Spotify *Get Playlist Items* reference.
-
-## Requirements
-
-- Python 3.9+
-- A running **slskd** instance reachable via HTTP(S), with an API key **or** username/password login.
-- Spotify API credentials (`SPOTIPY_CLIENT_ID`, `SPOTIPY_CLIENT_SECRET`).
-
-## Install
-
-```bash
-git clone https://github.com/lhommeduchili/soulmate.git
-cd soulmate
-python -m venv .venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-pip install -e ".[dev]"    # or: pip install -r requirements.txt
+## CLI (opcional)
+```
+python -m src.main --playlist <url_o_id> \
+  --slskd-host http://localhost:5030 \
+  --slskd-api-key $SLSKD_API_KEY \
+  --slskd-download-dir ./slskd_local/downloads \
+  --preferred-format flac \
+  --allow-lossy-fallback
 ```
 
-Create a `.env` file (or export env vars) with your Spotify creds:
-
-```bash
-SPOTIPY_CLIENT_ID=your_client_id
-SPOTIPY_CLIENT_SECRET=your_client_secret
-# Optional if you use OAuth flows; not needed for public playlists with client credentials.
-SPOTIPY_REDIRECT_URI=https://localhost:8080/callback
+## Tests & estilo
 ```
-
-Configure **slskd** with an API key (or username/password). Example slskd config snippet:
-
-```yaml
-web:
-  authentication:
-    api_keys:
-      my_cli:
-        key: "REDACTED_API_KEY"
-        role: readwrite
-```
-
-## Usage
-
-```bash
-python -m src.main "https://open.spotify.com/playlist/37i9dQZF1DX4dyzvuaRJ0n"   --slskd-host http://localhost:5030   --slskd-api-key YOUR_SLSKD_API_KEY   --slskd-download-dir "/path/where/slskd/downloads"   --output-root "./downloads"
-```
-
-Alternatively, as an installed console script:
-
-```bash
-soulmate --playlist "spotify:playlist:37i9dQZF1DX4dyzvuaRJ0n"     --slskd-host http://localhost:5030     --slskd-api-key YOUR_SLSKD_API_KEY
-```
-
-Flags:
-
-- `--playlist` (required): Spotify playlist URL or ID.
-- `--slskd-host` (required): Base URL to slskd (e.g., `http://localhost:5030`).
-- Auth **either**: `--slskd-api-key KEY` **or** `--slskd-user USER --slskd-pass PASS`.
-- `--slskd-download-dir`: Directory where slskd writes files (so we can move/rename after completion).
-- `--output-root`: Where to create the playlist folder. Defaults to `./downloads`.
-- `--max-retries`: Per-track download attempts across sources. Default: 3.
-- `--search-timeout-ms`: slskd search timeout in ms. Default: 15000.
-- `--dry-run`: Do everything except enqueue downloads.
-
-## Development
-
-- Code style: **black** + **flake8**.
-- Tests: **pytest**. Mocks are used for Spotify and slskd.
-- Type hints throughout. Docstrings and modular design for easy future extension (caching, web UI, etc.).
-
-### Run linters & tests
-
-```bash
+pytest
 flake8
 black --check .
-pytest -q
 ```
 
-## Roadmap
-
-- Concurrent download orchestration.
-- Caching of search results and album-level heuristics.
-- Optional audio fingerprint verification.
-
-## License
-
+## Licencia
 MIT
