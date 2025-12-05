@@ -333,24 +333,60 @@ def download_job_file_by_index(job_id: str, index: int):
     return FileResponse(full_path, media_type="application/octet-stream", filename=filename)
 
 
-@router.get("/jobs/{job_id}/archive")
-def download_job_archive(job_id: str, background_tasks: BackgroundTasks):
-    """Bundle all files for a job into a zip and send it."""
+@router.post("/jobs/{job_id}/pause")
+def pause_job(job_id: str):
     job = JOBS.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    # Allow archiving even if running (will zip what we have so far)
+    if job.status == "running":
+        job.status = "paused"
+        job.logs.append("Job paused by user.")
+    return {"status": job.status}
+
+@router.post("/jobs/{job_id}/resume")
+def resume_job(job_id: str):
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status == "paused":
+        job.status = "running"
+        job.logs.append("Job resumed.")
+    return {"status": job.status}
+
+@router.get("/jobs/{job_id}/archive")
+def download_job_archive(job_id: str, background_tasks: BackgroundTasks, indices: Optional[str] = None):
+    """Bundle files into a zip. If indices is provided (comma-separated), only zip those files."""
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
     output_root = os.getenv("OUTPUT_ROOT", "downloads")
     safe_root = os.path.abspath(output_root)
     if not job.files:
         raise HTTPException(status_code=404, detail="No files to archive")
+
+    # Filter files if indices provided
+    files_to_zip = []
+    if indices:
+        try:
+            idx_list = [int(i) for i in indices.split(",") if i.strip().isdigit()]
+            for i in idx_list:
+                if 0 <= i < len(job.files):
+                    files_to_zip.append(job.files[i])
+        except ValueError:
+            pass # Ignore invalid indices
+    else:
+        files_to_zip = job.files
+
+    if not files_to_zip:
+        raise HTTPException(status_code=400, detail="No files selected for archive")
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
     tmp_path = tmp.name
     tmp.close()
 
     with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for rel_path in job.files:
+        for rel_path in files_to_zip:
             full_path = os.path.abspath(os.path.join(output_root, rel_path))
             if not full_path.startswith(safe_root):
                 continue

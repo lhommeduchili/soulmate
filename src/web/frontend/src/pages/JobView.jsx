@@ -2,13 +2,20 @@ import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, CheckCircle, AlertCircle, Loader, Download, Terminal, FileAudio, Music } from 'lucide-react';
+import {
+    ArrowLeft, CheckCircle, AlertCircle, Loader, Download,
+    Terminal, FileAudio, Pause, Play, CheckSquare, Square
+} from 'lucide-react';
 
 export default function JobView() {
     const { jobId } = useParams();
     const [job, setJob] = useState(null);
     const [jobError, setJobError] = useState(null);
     const [files, setFiles] = useState([]);
+    const [selectedIndices, setSelectedIndices] = useState(new Set());
+    const [isPausing, setIsPausing] = useState(false);
+    const [showLogs, setShowLogs] = useState(true);
+
     const scrollRef = useRef(null);
     const intervalRef = useRef(null);
 
@@ -21,10 +28,10 @@ export default function JobView() {
     }, [jobId]);
 
     useEffect(() => {
-        if (scrollRef.current) {
+        if (showLogs && scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [job?.logs]);
+    }, [job?.logs, showLogs]);
 
     const fetchJob = async () => {
         try {
@@ -39,7 +46,7 @@ export default function JobView() {
         } catch (err) {
             console.error(err);
             if (err.response && err.response.status === 404) {
-                setJobError('Job not found or expired. Please start a new download.');
+                setJobError('Job not found or expired.');
                 if (intervalRef.current) clearInterval(intervalRef.current);
             }
         }
@@ -54,13 +61,59 @@ export default function JobView() {
         }
     };
 
+    const togglePause = async () => {
+        if (!job) return;
+        setIsPausing(true);
+        try {
+            if (job.status === 'running') {
+                await axios.post(`/api/jobs/${jobId}/pause`);
+            } else if (job.status === 'paused') {
+                await axios.post(`/api/jobs/${jobId}/resume`);
+            }
+            fetchJob();
+        } catch (err) {
+            console.error("Failed to toggle pause", err);
+        } finally {
+            setIsPausing(false);
+        }
+    };
+
+    const toggleSelection = (index) => {
+        const newSet = new Set(selectedIndices);
+        if (newSet.has(index)) {
+            newSet.delete(index);
+        } else {
+            newSet.add(index);
+        }
+        setSelectedIndices(newSet);
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIndices.size === files.length) {
+            setSelectedIndices(new Set());
+        } else {
+            const newSet = new Set();
+            files.forEach((_, i) => newSet.add(i));
+            setSelectedIndices(newSet);
+        }
+    };
+
+    const downloadSelected = () => {
+        if (selectedIndices.size === 0) return;
+        const indices = Array.from(selectedIndices).join(',');
+        window.location.href = `/api/jobs/${jobId}/archive?indices=${indices}`;
+    };
+
     if (jobError) {
         return (
-            <div className="min-h-screen flex items-center justify-center p-4">
-                <div className="bg-red-900/20 border border-red-500/50 p-6 rounded-xl text-center max-w-md">
-                    <AlertCircle size={48} className="mx-auto text-red-500 mb-4" />
-                    <p className="text-red-200 mb-6">{jobError}</p>
-                    <Link to="/" className="btn btn-secondary inline-block">Back to playlists</Link>
+            <div className="container">
+                <div className="surface" style={{ textAlign: 'center', maxWidth: 540, margin: '0 auto' }}>
+                    <AlertCircle size={42} color="#ff7b7b" />
+                    <h2 style={{ marginTop: '0.8rem' }}>No encontramos el job</h2>
+                    <p className="muted" style={{ marginBottom: '1.2rem' }}>{jobError}</p>
+                    <Link to="/" className="btn btn-ghost">
+                        <ArrowLeft size={16} /> Volver a playlists
+                    </Link>
                 </div>
             </div>
         );
@@ -68,128 +121,176 @@ export default function JobView() {
 
     if (!job) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <Loader size={48} className="text-[#00ff41] animate-spin" />
+            <div className="container" style={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}>
+                <Loader size={48} color="#7dfbd3" className="animate-spin" />
             </div>
         );
     }
 
     const processed = job.processed_tracks || (job.ok_count + job.fail_count);
     const progress = job.total_tracks > 0 ? (processed / job.total_tracks) * 100 : 0;
+    const isAllSelected = files.length > 0 && selectedIndices.size === files.length;
 
     return (
-        <div className="container max-w-4xl mx-auto p-6 space-y-8">
-            <Link to="/" className="inline-flex items-center text-gray-400 hover:text-[#00ff41] transition-colors">
-                <ArrowLeft size={20} className="mr-2" />
-                Back to Playlists
-            </Link>
+        <div className="container">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
+                <Link to="/" className="btn btn-ghost">
+                    <ArrowLeft size={16} /> Volver a playlists
+                </Link>
+                <span className="pill">Job #{jobId}</span>
+            </div>
 
-            {/* Status Card */}
-            <div className="bg-[#0f0f0f] border border-[#222] rounded-2xl p-6 shadow-xl">
-                <div className="flex flex-col md:flex-row justify-between items-start gap-4 mb-6">
+            <div className="surface surface-borderless">
+                <div className="panel-title">
                     <div>
-                        <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">{job.playlist_name}</h1>
-                        <div className="flex flex-wrap gap-3 text-sm">
-                            <span className="px-3 py-1 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 flex items-center gap-2">
-                                <CheckCircle size={14} /> {job.ok_count} success
+                        <div className="eyebrow" style={{ marginBottom: '8px' }}>Descarga en curso</div>
+                        <h1 style={{ marginBottom: '0.4rem' }}>{job.playlist_name}</h1>
+                        <div className="chip-row">
+                            <span className="chip success"><CheckCircle size={14} /> {job.ok_count} completados</span>
+                            {job.fail_count > 0 && <span className="chip danger"><AlertCircle size={14} /> {job.fail_count} fallidos</span>}
+                            <span className={`status-badge ${job.status === 'running' ? 'status-running' : job.status === 'paused' ? 'status-paused' : 'status-idle'}`}>
+                                {job.status}
                             </span>
-                            {job.fail_count > 0 && (
-                                <span className="px-3 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center gap-2">
-                                    <AlertCircle size={14} /> {job.fail_count} failed
-                                </span>
-                            )}
                         </div>
                     </div>
-
-                    {files.length > 0 && (
-                        <a
-                            href={`/api/jobs/${jobId}/archive`}
-                            className="btn btn-primary whitespace-nowrap"
-                            download
-                        >
-                            <Download size={18} className="mr-2" />
-                            Download ZIP
-                        </a>
+                    {(job.status === 'running' || job.status === 'paused') && (
+                        <button onClick={togglePause} className="btn btn-primary" disabled={isPausing}>
+                            {isPausing ? <Loader size={18} className="animate-spin" /> :
+                                job.status === 'running' ? <><Pause size={18} /> Pausar</> : <><Play size={18} /> Reanudar</>}
+                        </button>
                     )}
                 </div>
 
-                {/* Progress Bar */}
-                <div className="space-y-2">
-                    <div className="h-3 bg-[#222] rounded-full overflow-hidden">
+                <div style={{ marginTop: '1rem' }}>
+                    <div className="progress">
                         <motion.div
-                            className="h-full bg-[#00ff41]"
+                            className="progress-bar"
                             initial={{ width: 0 }}
                             animate={{ width: `${progress}%` }}
-                            transition={{ duration: 0.5 }}
+                            transition={{ duration: 0.35 }}
+                            style={{ background: job.status === 'paused' ? 'linear-gradient(90deg, #ffd479, #ffce73)' : undefined }}
                         />
                     </div>
-                    <div className="flex justify-between text-xs font-mono text-gray-500">
-                        <span>{processed} / {job.total_tracks} tracks</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', color: 'var(--muted)', fontFamily: 'DM Mono, monospace', fontSize: '0.9rem' }}>
+                        <span>{processed} / {job.total_tracks} tracks procesados</span>
                         <span>{Math.round(progress)}%</span>
                     </div>
                 </div>
 
-                {/* Current Status */}
                 {job.status === 'running' && (
-                    <div className="mt-6 p-4 bg-black/30 rounded-xl border border-[#222] flex items-center gap-3">
-                        <Loader size={20} className="text-[#00ff41] animate-spin flex-shrink-0" />
-                        <div className="min-w-0 flex-1">
-                            <p className="text-sm text-gray-300 truncate">
-                                Processing: <span className="text-white">{job.current_track_name || "Initializing..."}</span>
-                            </p>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Files List */}
-            <div className="bg-[#0f0f0f] border border-[#222] rounded-2xl p-6 shadow-xl">
-                <div className="flex items-center gap-2 mb-6 border-b border-[#222] pb-4">
-                    <Music size={24} className="text-[#00ff41]" />
-                    <h2 className="text-xl font-bold text-white">Downloaded Files ({files.length})</h2>
-                </div>
-
-                {files.length > 0 ? (
-                    <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-                        {files.map((f, index) => (
-                            <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-[#141414] hover:bg-[#1a1a1a] border border-[#222] transition-colors group">
-                                <div className="flex items-center gap-3 min-w-0 flex-1 mr-4">
-                                    <FileAudio size={20} className="text-gray-500 group-hover:text-[#00ff41] transition-colors flex-shrink-0" />
-                                    <span className="text-gray-300 text-sm truncate font-medium">{f.split('/').pop()}</span>
+                    <div style={{ marginTop: '1rem', padding: '0.9rem 1rem', borderRadius: '12px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.03)', display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
+                        <Loader size={20} className="animate-spin" color="#7dfbd3" />
+                        <div>
+                            <div style={{ color: 'var(--text)', fontWeight: 600 }}>{job.current_track_name || "Inicializando..."}</div>
+                            {(job.current_download_percent > 0 || job.current_download_state) && (
+                                <div className="muted" style={{ fontFamily: 'DM Mono, monospace', fontSize: '0.9rem' }}>
+                                    {job.current_download_state || 'descargando'} · {job.current_download_percent || 0}%
                                 </div>
-                                <a
-                                    href={`/api/jobs/${jobId}/file_by_index/${index}`}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#00ff41]/10 text-[#00ff41] hover:bg-[#00ff41] hover:text-black transition-all text-sm font-medium whitespace-nowrap"
-                                    download
-                                >
-                                    <Download size={16} />
-                                    Descargar
-                                </a>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="text-center py-12 text-gray-600 border-2 border-dashed border-[#222] rounded-xl">
-                        <p>No files downloaded yet.</p>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
 
-            {/* Logs */}
-            <div className="bg-[#050505] border border-[#222] rounded-2xl p-6 shadow-xl">
-                <div className="flex items-center gap-2 mb-4 text-gray-400">
-                    <Terminal size={16} />
-                    <span className="text-sm font-mono font-bold uppercase tracking-wider">Live Logs</span>
-                </div>
-                <div className="font-mono text-xs space-y-1 h-48 overflow-y-auto custom-scrollbar" ref={scrollRef}>
-                    {job.logs.map((log, i) => (
-                        <div key={i} className="text-gray-400 break-words hover:bg-[#111] px-2 py-0.5 rounded">
-                            <span className="text-[#00ff41] mr-2">›</span>
-                            {log}
+            <div className="grid-two" style={{ marginTop: '1.5rem' }}>
+                <div className="surface">
+                    <div className="panel-title">
+                        <div>
+                            <p className="muted" style={{ marginBottom: '6px' }}>Archivos</p>
+                            <h2>Descargados ({files.length})</h2>
                         </div>
-                    ))}
-                    {job.logs.length === 0 && (
-                        <span className="text-gray-700 italic px-2">Waiting for logs...</span>
+                        <button
+                            onClick={downloadSelected}
+                            disabled={selectedIndices.size === 0}
+                            className="btn btn-primary"
+                            style={{ opacity: selectedIndices.size === 0 ? 0.6 : 1, cursor: selectedIndices.size === 0 ? 'not-allowed' : 'pointer' }}
+                        >
+                            <Download size={16} /> Bajar selección ({selectedIndices.size})
+                        </button>
+                    </div>
+
+                    {files.length > 0 ? (
+                        <div className="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style={{ width: '60px', textAlign: 'center' }}>
+                                            <button onClick={toggleSelectAll} className="btn btn-ghost" style={{ padding: '0.35rem 0.5rem' }}>
+                                                {isAllSelected ? <CheckSquare size={18} /> : <Square size={18} />}
+                                            </button>
+                                        </th>
+                                        <th>Filename</th>
+                                        <th style={{ textAlign: 'right' }}>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {files.map((f, index) => {
+                                        const isSelected = selectedIndices.has(index);
+                                        return (
+                                            <tr
+                                                key={index}
+                                                onClick={() => toggleSelection(index)}
+                                                style={{
+                                                    background: isSelected ? 'rgba(125,251,211,0.08)' : 'transparent',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                <td style={{ textAlign: 'center' }}>
+                                                    {isSelected ? <CheckSquare size={18} color="#7dfbd3" /> : <Square size={18} color="var(--muted)" />}
+                                                </td>
+                                                <td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                                        <FileAudio size={18} color="var(--muted)" />
+                                                        <span style={{ color: 'var(--text)', fontWeight: 600 }}>{f.split('/').pop()}</span>
+                                                    </div>
+                                                </td>
+                                                <td style={{ textAlign: 'right' }}>
+                                                    <a
+                                                        href={`/api/jobs/${jobId}/file_by_index/${index}`}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="small-btn"
+                                                        style={{ textDecoration: 'none' }}
+                                                        download
+                                                    >
+                                                        <Download size={14} /> Descargar
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="empty-state">Aún no hay archivos descargados.</div>
+                    )}
+                </div>
+
+                <div className="surface">
+                    <div className="panel-title">
+                        <div>
+                            <p className="muted" style={{ marginBottom: '6px' }}>Bitácora</p>
+                            <h2>Logs en vivo</h2>
+                        </div>
+                        <button className="small-btn" onClick={() => setShowLogs(!showLogs)}>
+                            <Terminal size={14} /> {showLogs ? 'Ocultar' : 'Mostrar'}
+                        </button>
+                    </div>
+
+                    {showLogs ? (
+                        <div className="log-pane" ref={scrollRef}>
+                            {job.logs.map((log, i) => (
+                                <div key={i} className="log-line">
+                                    <span style={{ color: 'var(--accent)' }}>› </span>
+                                    {log}
+                                </div>
+                            ))}
+                            {job.logs.length === 0 && (
+                                <div className="muted">Esperando logs…</div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="empty-state" style={{ padding: '1.4rem' }}>Logs ocultos para esta sesión.</div>
                     )}
                 </div>
             </div>

@@ -6,7 +6,11 @@ from starlette.middleware.sessions import SessionMiddleware
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    load_dotenv()
+except OSError as exc:
+    # Prevent startup from crashing if .env is unreadable in the container.
+    print(f"[soulmate] Warning: could not load .env ({exc})")
 
 from src.web.api import router as api_router
 

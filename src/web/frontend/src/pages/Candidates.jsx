@@ -34,7 +34,7 @@ export default function Candidates() {
       setData(res.data);
     } catch (e) {
       console.error(e);
-      setMessage('Failed to fetch candidates');
+      setMessage('No pudimos obtener los candidatos');
     } finally {
       setLoading(false);
     }
@@ -54,7 +54,7 @@ export default function Candidates() {
         track,
         candidate: cand,
       });
-      setMessage(`Downloaded: ${track.artist} - ${track.title}`);
+      setMessage(`Descargado: ${track.artist} - ${track.title}`);
     } catch (e) {
       console.error(e);
       setMessage(`Error: ${e.response?.data?.detail || e.message}`);
@@ -63,54 +63,82 @@ export default function Candidates() {
     }
   };
 
-  if (loading) return <div className="p-8">Loading candidates...</div>;
-  if (!data) return <div className="p-8 text-red-400">No data</div>;
+  if (loading) {
+    return (
+      <div className="container" style={{ minHeight: '50vh', display: 'grid', placeItems: 'center' }}>
+        Cargando candidatos…
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="container">
+        <div className="empty-state">No hay datos de candidatos.</div>
+      </div>
+    );
+  }
 
   return (
     <div className="container">
-      <Link to="/" className="text-[#00ff41] underline mb-4 inline-flex items-center">&larr; Back to Playlists</Link>
-      <h1 className="text-3xl font-bold mb-4">Candidates for {data.playlist_name}</h1>
-      {message && <div className="mb-4 text-sm text-gray-200">{message}</div>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
+        <Link to="/" className="btn btn-ghost">← Volver</Link>
+        <span className="pill">{data.tracks.length} tracks</span>
+      </div>
 
-      <div className="space-y-3">
-        {data.tracks.map((t, idx) => (
-          <div key={`${t.artist}-${t.title}-${idx}`} className="card">
-            <div className="flex justify-between items-center cursor-pointer" onClick={() => toggle(idx)}>
-              <div>
-                <div className="font-semibold">{t.artist} - {t.title}</div>
-                <div className="text-xs text-gray-500">{t.album}</div>
-              </div>
-              {expanded[idx] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </div>
-            {expanded[idx] && (
-              <div className="mt-3 space-y-2">
-                {t.candidates.length === 0 && <div className="text-sm text-gray-500">No candidates</div>}
-                {t.candidates.map((c, j) => (
-                  <motion.div
-                    key={`${c.username}-${c.filename}-${j}`}
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex justify-between items-center bg-black/30 border border-gray-800 p-2 rounded"
-                  >
-                    <div className="text-sm">
-                      <div className="font-mono text-gray-200 truncate">{c.filename}</div>
-                      <div className="text-gray-500 text-xs">
-                        {c.username} · {formatSize(c.size)} · v={c.reported_speed ? `${(c.reported_speed/1024).toFixed(0)} KB/s` : '?'} · q={c.peer_queue_len ?? '?'}
-                      </div>
-                    </div>
-                    <button
-                      className="btn btn-primary"
-                      disabled={downloading !== null}
-                      onClick={() => downloadCandidate(t, c)}
-                    >
-                      {downloading ? 'Working...' : <Download size={16} />}
-                    </button>
-                  </motion.div>
-                ))}
-              </div>
-            )}
+      <div className="surface surface-borderless">
+        <div className="panel-title">
+          <div>
+            <div className="eyebrow" style={{ marginBottom: '8px' }}>Candidatos</div>
+            <h1>Playlist: {data.playlist_name}</h1>
+            <p className="muted">Elige manualmente qué versión descargar para cada track.</p>
           </div>
-        ))}
+        </div>
+
+        {message && <div className="pill" style={{ margin: '1rem 0' }}>{message}</div>}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '1rem' }}>
+          {data.tracks.map((t, idx) => (
+            <div key={`${t.artist}-${t.title}-${idx}`} className="accordion">
+              <div className="accordion-header" onClick={() => toggle(idx)}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{t.artist} - {t.title}</div>
+                  <div className="muted" style={{ fontSize: '0.9rem' }}>{t.album}</div>
+                </div>
+                {expanded[idx] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              </div>
+
+              {expanded[idx] && (
+                <div className="accordion-body">
+                  {t.candidates.length === 0 && <div className="muted">No hay candidatos</div>}
+                  {t.candidates.map((c, j) => (
+                    <motion.div
+                      key={`${c.username}-${c.filename}-${j}`}
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="candidate-row"
+                    >
+                      <div>
+                        <div style={{ fontFamily: 'DM Mono, monospace', color: 'var(--text)' }}>{c.filename}</div>
+                        <div className="candidate-meta">
+                          {c.username} · {formatSize(c.size)} · v={c.reported_speed ? `${(c.reported_speed / 1024).toFixed(0)} KB/s` : '?'} · q={c.peer_queue_len ?? '?'}
+                        </div>
+                      </div>
+                      <button
+                        className="btn btn-primary"
+                        disabled={downloading !== null}
+                        onClick={() => downloadCandidate(t, c)}
+                        style={{ minWidth: '140px', justifyContent: 'center' }}
+                      >
+                        {downloading ? 'Procesando...' : <><Download size={16} /> Descargar</>}
+                      </button>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

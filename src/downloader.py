@@ -191,7 +191,7 @@ class Downloader:
         self._matrix_print(" ! " + msg, progress_callback)
         return DownloadOutcome(track, False, msg)
 
-    def run(self, playlist_name: str, tracks: List[Track], progress_callback=None) -> Tuple[int, int]:
+    def run(self, playlist_name: str, tracks: List[Track], progress_callback=None, pause_handler=None) -> Tuple[int, int]:
         """Process all tracks. progress_callback(type, data) if provided."""
         ok = 0
         fail = 0
@@ -201,6 +201,10 @@ class Downloader:
         # or we can inject a tqdm wrapper as the callback.
         
         for i, t in enumerate(tracks, start=1):
+            # Check for pause before processing each track
+            if pause_handler:
+                pause_handler()
+
             if progress_callback:
                 progress_callback("progress", {"current": i, "total": total, "track": t.title})
 

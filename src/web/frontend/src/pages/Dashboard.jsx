@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Disc, Download, Search, X, Settings, Music, Zap } from 'lucide-react';
+import { Disc, Download, Search, X, Settings, Music, Zap, ListMusic } from 'lucide-react';
 
 import { isAuthenticated, getToken } from '../utils/auth';
 
@@ -63,164 +63,197 @@ export default function Dashboard() {
         navigate(`/inspect/${id}`);
     };
 
+    const filtered = playlists.filter((pl) =>
+        pl.name.toLowerCase().includes(query.toLowerCase().trim())
+    );
+    const totalTracks = playlists.reduce((sum, pl) => sum + (pl.tracks || 0), 0);
+
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                >
-                    <Disc size={48} className="text-[#00ff41]" />
-                </motion.div>
+            <div className="container">
+                <div className="surface surface-borderless" style={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                        <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        >
+                            <Disc size={44} color="#7dfbd3" />
+                        </motion.div>
+                        <p className="muted">Cargando tu biblioteca…</p>
+                    </div>
+                </div>
             </div>
         );
     }
 
-    const filtered = playlists.filter((pl) =>
-        pl.name.toLowerCase().includes(query.toLowerCase().trim())
-    );
-
     return (
         <div className="container">
-            <header className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8 mb-12">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-[#00ff41]/10 rounded-xl border border-[#00ff41]/20">
-                        <Disc className="text-[#00ff41]" size={32} />
-                    </div>
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight">Library</h1>
-                        <p className="text-gray-400 mt-1">Select a playlist to start downloading</p>
+            <header className="page-header">
+                <div className="brand">
+                    <div className="brand-mark" />
+                    <div className="brand-title">
+                        <strong>Soulmate</strong>
+                        <span>Spotify → Soulseek lossless</span>
                     </div>
                 </div>
+                <div className="chip-row">
+                    <span className="pill"><Zap size={15} /> Descarga rápida</span>
+                    <span className="pill"><Settings size={15} /> {preferredFormat.toUpperCase()} preferido</span>
+                </div>
+            </header>
 
-                <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
-                    <div className="search-bar flex-1 lg:w-80">
-                        <Search size={18} className="text-gray-500" />
+            <section className="hero">
+                <div className="surface hero-copy">
+                    <div className="eyebrow">Biblioteca lista para bajar</div>
+                    <h1>Convierte playlists en descargas lossless, sin esfuerzo.</h1>
+                    <p className="muted">
+                        Filtra, selecciona formato y dispara la cola. Guardamos tus preferencias locales para que solo pulses descargar.
+                    </p>
+
+                    <div className="hero-actions">
+                        <div className="stat-card">
+                            <small>Playlists listas</small>
+                            <strong>{playlists.length}</strong>
+                        </div>
+                        <div className="stat-card">
+                            <small>Tracks totales</small>
+                            <strong>{totalTracks}</strong>
+                        </div>
+                        <div className="stat-card">
+                            <small>Fallback</small>
+                            <strong>{allowLossy ? 'Permitido' : 'Solo lossless'}</strong>
+                        </div>
+                    </div>
+
+                    <div className="search">
+                        <Search size={18} color="#9aa2b5" />
                         <input
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            placeholder="Search playlists..."
-                            className="bg-transparent border-none outline-none text-sm text-white placeholder:text-gray-500 w-full"
+                            placeholder="Busca por nombre de playlist…"
                         />
                         {query && (
-                            <button
-                                className="text-gray-400 hover:text-white transition-colors"
-                                onClick={() => setQuery('')}
-                            >
-                                <X size={16} />
+                            <button onClick={() => setQuery('')} className="btn btn-muted" style={{ padding: '0.45rem 0.8rem' }}>
+                                <X size={14} />
                             </button>
                         )}
                     </div>
                 </div>
-            </header>
 
-            <div className="mb-10 p-6 bg-[#0f0f0f] border border-[#222] rounded-2xl">
-                <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-gray-400 uppercase tracking-wider">
-                    <Settings size={14} />
-                    <span>Download Settings</span>
-                </div>
-                <div className="flex flex-wrap gap-6 items-center">
-                    <div className="flex flex-col gap-2">
-                        <label className="text-xs text-gray-500 font-medium">Format</label>
-                        <select
-                            value={preferredFormat}
-                            onChange={(e) => setPreferredFormat(e.target.value)}
-                            className="select w-32 text-sm bg-[#161616]"
-                        >
-                            <option value="flac">FLAC</option>
-                            <option value="wav">WAV</option>
-                            <option value="aiff">AIFF</option>
-                        </select>
+                <div className="surface surface-borderless">
+                    <div className="panel-title">
+                        <div>
+                            <p className="muted" style={{ marginBottom: '6px' }}>Preferencias de descarga</p>
+                            <h2>Formato y límites</h2>
+                        </div>
+                        <span className="pill"><Settings size={15} /> Ajustes locales</span>
                     </div>
 
-                    <div className="flex flex-col gap-2">
-                        <label className="text-xs text-gray-500 font-medium">Track Limit</label>
-                        <input
-                            type="number"
-                            min="1"
-                            className="input w-28 text-sm bg-[#161616]"
-                            placeholder="All tracks"
-                            value={trackLimit}
-                            onChange={(e) => setTrackLimit(e.target.value)}
-                        />
+                    <div className="settings-grid">
+                        <div>
+                            <div className="field-label">Formato preferido</div>
+                            <select
+                                value={preferredFormat}
+                                onChange={(e) => setPreferredFormat(e.target.value)}
+                                className="select"
+                            >
+                                <option value="flac">FLAC</option>
+                                <option value="wav">WAV</option>
+                                <option value="aiff">AIFF</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <div className="field-label">Límite de tracks (opcional)</div>
+                            <input
+                                type="number"
+                                min="1"
+                                className="input"
+                                placeholder="Todos los tracks"
+                                value={trackLimit}
+                                onChange={(e) => setTrackLimit(e.target.value)}
+                            />
+                        </div>
                     </div>
 
-                    <div className="flex items-center gap-3 mt-6 bg-[#161616] px-4 py-2 rounded-lg border border-[#222] cursor-pointer hover:border-[#333] transition-colors">
-                        <input
-                            type="checkbox"
-                            id="lossy"
-                            checked={allowLossy}
-                            onChange={(e) => setAllowLossy(e.target.checked)}
-                            className="accent-[#00ff41] w-4 h-4 cursor-pointer"
-                        />
-                        <label htmlFor="lossy" className="text-sm text-gray-300 cursor-pointer select-none">
-                            Allow lossy fallback
+                    <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                        <label className="toggle">
+                            <input
+                                type="checkbox"
+                                checked={allowLossy}
+                                onChange={(e) => setAllowLossy(e.target.checked)}
+                            />
+                            <span>Permitir fallback con pérdida</span>
                         </label>
+                        <p className="muted" style={{ fontSize: '0.9rem' }}>Si no hay lossless disponible, toma el mejor candidato restante.</p>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                <AnimatePresence>
-                    {filtered.map((pl, i) => (
-                        <motion.div
-                            key={pl.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ delay: i * 0.03 }}
-                            className="card group cursor-pointer"
-                            onClick={() => startDownload(pl.id)}
-                        >
-                            <div className="relative aspect-square mb-4 overflow-hidden rounded-lg bg-[#222]">
-                                {pl.image ? (
-                                    <img
-                                        src={pl.image}
-                                        alt={pl.name}
-                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                    />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1a1a1a] to-[#111]">
-                                        <Music className="text-gray-700" size={48} />
-                                    </div>
-                                )}
-                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3 backdrop-blur-sm">
-                                    <button
-                                        className="p-3 bg-[#00ff41] text-black rounded-full shadow-lg hover:scale-110 transition-transform"
-                                        onClick={(e) => { e.stopPropagation(); startDownload(pl.id); }}
-                                        title="Download playlist"
-                                    >
-                                        <Download size={20} />
-                                    </button>
-                                    <button
-                                        className="p-3 bg-white text-black rounded-full shadow-lg hover:scale-110 transition-transform"
-                                        onClick={(e) => { e.stopPropagation(); inspectPlaylist(pl.id); }}
-                                        title="Inspect candidates"
-                                    >
-                                        <Search size={20} />
-                                    </button>
-                                </div>
-                            </div>
+            <section className="surface">
+                <div className="panel-title">
+                    <div>
+                        <p className="muted" style={{ marginBottom: '6px' }}>Playlists</p>
+                        <h2>Listas listas para bajar ({filtered.length})</h2>
+                    </div>
+                    <span className="pill"><ListMusic size={15} /> {playlists.length} totales</span>
+                </div>
 
-                            <div>
-                                <h3 className="font-bold text-lg truncate group-hover:text-[#00ff41] transition-colors">{pl.name}</h3>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[#222] text-gray-400 border border-[#333]">
+                <div className="playlist-grid">
+                    <AnimatePresence>
+                        {filtered.map((pl, i) => (
+                            <motion.div
+                                key={pl.id}
+                                initial={{ opacity: 0, y: 15 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.98 }}
+                                transition={{ delay: i * 0.02 }}
+                                className="playlist-card"
+                            >
+                                <div className="playlist-cover">
+                                    {pl.image ? (
+                                        <img src={pl.image} alt={pl.name} />
+                                    ) : (
+                                        <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--muted)' }}>
+                                            <Music size={40} />
+                                        </div>
+                                    )}
+                                    <span className="pill" style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,0.4)', borderColor: 'rgba(255,255,255,0.2)' }}>
                                         {pl.tracks} tracks
                                     </span>
                                 </div>
-                            </div>
-                        </motion.div>
-                    ))}
-                </AnimatePresence>
+
+                                <div className="playlist-body">
+                                    <div className="playlist-title">{pl.name}</div>
+                                    <p className="muted" style={{ fontSize: '0.95rem' }}>
+                                        Descarga directa al formato {preferredFormat.toUpperCase()} con fallback inteligente.
+                                    </p>
+                                    <div className="playlist-meta">
+                                        <span className="chip"><Disc size={14} /> {preferredFormat.toUpperCase()}</span>
+                                        <span className="chip">{allowLossy ? 'Fallback activo' : 'Solo lossless'}</span>
+                                    </div>
+
+                                    <div className="playlist-actions">
+                                        <button className="small-btn primary" onClick={() => startDownload(pl.id)}>
+                                            <Download size={16} /> Descargar
+                                        </button>
+                                        <button className="small-btn" onClick={() => inspectPlaylist(pl.id)}>
+                                            <Search size={16} /> Ver candidatos
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </AnimatePresence>
+                </div>
 
                 {filtered.length === 0 && (
-                    <div className="col-span-full flex flex-col items-center justify-center py-20 text-gray-500">
-                        <Search size={48} className="mb-4 opacity-20" />
-                        <p className="text-lg">No playlists found matching "{query}"</p>
+                    <div className="empty-state" style={{ marginTop: '1rem' }}>
+                        <Search size={26} style={{ opacity: 0.6 }} />
+                        <p style={{ marginTop: '8px' }}>No encontramos playlists con “{query}”.</p>
                     </div>
                 )}
-            </div>
+            </section>
         </div>
     );
 }

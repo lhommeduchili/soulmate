@@ -1,7 +1,7 @@
 import React from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
-import { Music, ArrowRight } from 'lucide-react';
+import { Music, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
 
 export default function Login() {
     const handleLogin = async () => {
@@ -19,40 +19,60 @@ export default function Login() {
     };
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen relative overflow-hidden">
-            {/* Background decoration */}
-            <div className="absolute inset-0 z-0 opacity-30"
-                style={{
-                    backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(0, 255, 65, 0.15) 0%, transparent 60%)',
-                }}
-            />
-
+        <div className="container" style={{ minHeight: '80vh', display: 'grid', alignItems: 'center' }}>
             <motion.div
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-                className="z-10 text-center p-10 bg-[#0f0f0f] rounded-3xl border border-[#222] shadow-2xl max-w-md w-full relative overflow-hidden group"
+                transition={{ duration: 0.5, ease: 'easeOut' }}
+                className="surface surface-borderless"
+                style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '1.5rem', alignItems: 'center' }}
             >
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#00ff41] to-transparent opacity-50" />
+                <div>
+                    <div className="eyebrow" style={{ marginBottom: '10px' }}>Nuevo look</div>
+                    <h1 style={{ fontSize: '2.4rem', marginBottom: '0.4rem' }}>Conecta Spotify y baja en lossless.</h1>
+                    <p className="muted" style={{ marginBottom: '1.5rem' }}>
+                        Soulmate toma tu biblioteca de Spotify y la prepara para Soulseek en un click, manteniendo metadatos y priorizando formatos sin pérdida.
+                    </p>
 
-                <div className="flex justify-center mb-8">
-                    <div className="p-5 rounded-2xl bg-[#00ff41]/5 border border-[#00ff41]/20 shadow-[0_0_30px_rgba(0,255,65,0.1)] group-hover:shadow-[0_0_50px_rgba(0,255,65,0.2)] transition-shadow duration-500">
-                        <Music size={48} className="text-[#00ff41]" />
+                    <div className="chip-row" style={{ marginBottom: '1.2rem' }}>
+                        <span className="pill"><ShieldCheck size={15} /> Stateless & seguro</span>
+                        <span className="pill"><Sparkles size={15} /> Nuevo UI más cómodo</span>
+                    </div>
+
+                    <div style={{ display: 'grid', gap: '0.65rem', color: 'var(--muted)' }}>
+                        <div>• Inicio de sesión directo con Spotify.</div>
+                        <div>• Descarga playlists completas o por track.</div>
+                        <div>• Preferencias guardadas localmente.</div>
                     </div>
                 </div>
 
-                <h1 className="text-4xl font-bold mb-3 tracking-tight text-white">Soulmate</h1>
-                <p className="text-gray-400 mb-10 text-lg">Spotify to Soulseek Lossless Downloader</p>
+                <div className="surface" style={{ position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, background: 'radial-gradient(circle, rgba(125,251,211,0.18), transparent 60%)' }} />
+                    <div style={{ position: 'absolute', bottom: -60, left: -40, width: 220, height: 220, background: 'radial-gradient(circle, rgba(255,212,121,0.16), transparent 55%)' }} />
+                    <div style={{ position: 'relative', zIndex: 1 }}>
+                        <div className="brand" style={{ marginBottom: '1.2rem' }}>
+                            <div className="brand-mark" />
+                            <div className="brand-title">
+                                <strong>Soulmate</strong>
+                                <span>Spotify → Soulseek</span>
+                            </div>
+                        </div>
 
-                <button
-                    onClick={handleLogin}
-                    className="btn btn-primary w-full text-lg py-4 flex items-center justify-center gap-3 group/btn"
-                >
-                    <span>Connect with Spotify</span>
-                    <ArrowRight size={20} className="group-hover/btn:translate-x-1 transition-transform" />
-                </button>
+                        <button
+                            onClick={handleLogin}
+                            className="btn btn-primary"
+                            style={{ width: '100%', padding: '1rem 1.2rem', fontSize: '1rem' }}
+                        >
+                            <Music size={18} />
+                            Conectar con Spotify
+                            <ArrowRight size={18} />
+                        </button>
 
-                <p className="mt-8 text-xs text-gray-600 font-mono">v2.0 · Stateless Auth</p>
+                        <p className="muted" style={{ marginTop: '1rem', fontSize: '0.9rem', textAlign: 'center' }}>
+                            Usamos autenticación directa de Spotify, sin almacenar tus credenciales.
+                        </p>
+                    </div>
+                </div>
             </motion.div>
         </div>
     );

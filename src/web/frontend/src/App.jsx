@@ -42,7 +42,7 @@ function App() {
   return (
     <Router>
       <AuthHandler>
-        <div className="min-h-screen bg-gray-900 text-white font-sans selection:bg-green-500 selection:text-black">
+        <div className="app-shell">
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<Dashboard />} />

@@ -94,7 +94,7 @@ def _download_worker(
             slsk=slsk_client,
             slskd_download_dir=slskd_download_dir,
             output_dir=output_dir,
-            max_retries=8,
+            max_retries=4,
             preferred_ext=preferred_format,
             allow_lossy_fallback=allow_lossy_fallback,
         )
@@ -131,7 +131,20 @@ def _download_worker(
                 job.current_download_percent = data.get("percent", 0.0)
                 job.current_download_state = data.get("state", "")
         
-        dl.run(playlist_name, tracks, progress_callback=progress_cb)
+        def pause_handler():
+            """Block if job status is 'paused'."""
+            import time
+            while True:
+                # Refresh job state from global dict
+                current_status = JOBS[job_id].status
+                if current_status == "paused":
+                    time.sleep(1)
+                    continue
+                # If cancelled or failed, we might want to stop, but for now just let it proceed 
+                # (or let the main loop handle it if we added cancellation support)
+                break
+
+        dl.run(playlist_name, tracks, progress_callback=progress_cb, pause_handler=pause_handler)
         
         # Collect files for direct download (no zip)
         collected = []
