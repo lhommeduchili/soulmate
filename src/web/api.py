@@ -309,6 +309,30 @@ def download_job_file(job_id: str, file_path: str):
     return FileResponse(full_path, media_type="application/octet-stream", filename=filename)
 
 
+@router.get("/jobs/{job_id}/file_by_index/{index}")
+def download_job_file_by_index(job_id: str, index: int):
+    """Download a file by its index in the job.files list to avoid path encoding issues."""
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not job.files:
+        raise HTTPException(status_code=404, detail="No files in job")
+    
+    try:
+        rel_path = job.files[index]
+    except IndexError:
+        raise HTTPException(status_code=404, detail="File index out of range")
+
+    output_root = os.getenv("OUTPUT_ROOT", "downloads")
+    full_path = os.path.abspath(os.path.join(output_root, rel_path))
+    
+    if not os.path.exists(full_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+        
+    filename = os.path.basename(full_path)
+    return FileResponse(full_path, media_type="application/octet-stream", filename=filename)
+
+
 @router.get("/jobs/{job_id}/archive")
 def download_job_archive(job_id: str, background_tasks: BackgroundTasks):
     """Bundle all files for a job into a zip and send it."""
