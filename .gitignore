@@ -1,0 +1,7 @@
+# Local downloads and media
+downloads/
+slskd_local/downloads/
+
+# OS metadata
+.DS_Store
+slskd_local/.DS_Store
