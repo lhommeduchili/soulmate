@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import requests
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 try:
@@ -12,11 +12,13 @@ try:
 except Exception as e:  # pragma: no cover - import-time error shown at runtime
     slskd_api = None  # type: ignore
 
-from src.utils.formatting import is_lossless_path, preferred_ext_score
+from src.utils.formatting import basename_any, is_lossless_path, preferred_ext_score
 
 
 @dataclass
 class Candidate:
+    """Single search hit returned by slskd."""
+
     username: str
     filename: str
     size: int
@@ -50,6 +52,8 @@ class SoulseekClient:
                 "slskd-api is not installed. Please install it (`pip install slskd-api`) and ensure slskd is running."
             )
         self.preferred_ext = preferred_ext
+        self._min_search_interval = 1.2  # seconds between calls to avoid slskd rate limit
+        self._last_search_time = 0.0
         self.client = slskd_api.SlskdClient(  # type: ignore[attr-defined]
             host=host,
             api_key=api_key,
@@ -60,9 +64,8 @@ class SoulseekClient:
         )
 
     def _normalize_resp(self, r: Dict[str, Any], preferred_ext: str) -> Candidate:
-        """Best-effort mapping from slskd response dict to Candidate."""
+        """Map a raw slskd response dict to a Candidate with computed ext score."""
         username = r.get("username") or r.get("user") or ""
-        # filename may appear under different keys; 'filename' seems standard.
         filename = r.get("filename") or r.get("file") or r.get("path") or ""
         size = int(r.get("size") or r.get("filesize") or 0)
         speed = r.get("uploadSpeed") or r.get("speed") or r.get("userSpeed") or None
@@ -95,49 +98,107 @@ class SoulseekClient:
         preferred_ext: Optional[str] = None,
         lossless_only: bool = True,
     ) -> List[Candidate]:
-        """Run a slskd text search and return candidates, best first.
-
-        If lossless_only is True, filter to lossless extensions; otherwise allow any.
-        """
+        """Run a slskd text search and return candidates, best first."""
         preferred = (preferred_ext or self.preferred_ext).lower()
-        resp = self.client.searches.search_text(  # type: ignore[attr-defined]
-            searchText=query,
-            fileLimit=10_000,
-            filterResponses=True,
-            maximumPeerQueueLength=max_peer_queue,
-            minimumPeerUploadSpeed=min_upload_speed_bps,
-            minimumResponseFileCount=1,
-            responseLimit=response_limit,
-            searchTimeout=search_timeout_ms,
-        )
-        sid = resp.get("id")
-        if not sid:
-            # Some versions may not return id; ask for all and use the latest as a fallback
-            searches = self.client.searches.get_all()  # type: ignore[attr-defined]
-            sid = searches[-1]["id"] if searches else None
-        if not sid:
+        now = time.time()
+        wait_for = self._min_search_interval - (now - self._last_search_time)
+        if wait_for > 0:
+            time.sleep(wait_for)
+        self._last_search_time = time.time()
+
+        attempts = 0
+        results: List[Dict[str, Any]] = []
+        sid: Optional[str] = None
+        token: Optional[int] = None
+        while attempts < 4:
+            attempts += 1
+            try:
+                resp = self.client.searches.search_text(  # type: ignore[attr-defined]
+                    searchText=query,
+                    fileLimit=10_000,
+                    filterResponses=False,
+                    maximumPeerQueueLength=max_peer_queue,
+                    minimumPeerUploadSpeed=min_upload_speed_bps,
+                    minimumResponseFileCount=1,
+                    responseLimit=response_limit,
+                    searchTimeout=search_timeout_ms,
+                )
+            except requests.exceptions.HTTPError as e:
+                status = e.response.status_code if e.response is not None else None
+                text = str(e)
+                if status in (409, 429) or "429" in text or "Too Many Requests" in text or "Conflict" in text:
+                    time.sleep(1.0 * attempts)
+                    continue
+                raise
+            except Exception as e:
+                text = str(e)
+                status = getattr(e, "status_code", None) or getattr(e, "status", None)
+                if status == 429 or "429" in text or "Too Many Requests" in text:
+                    time.sleep(1.0 * attempts)
+                    continue
+                raise
+
+            sid = resp.get("id")
+            token = resp.get("token")
+            if not sid:
+                searches = self.client.searches.get_all()  # type: ignore[attr-defined]
+                sid = searches[-1]["id"] if searches else None
+            if not sid:
+                time.sleep(1.0 * attempts)
+                continue
+
+            deadline = time.time() + max(20.0, search_timeout_ms / 1000.0 + 10.0)
+            while time.time() < deadline:
+                params = {"token": token} if token is not None else {}
+                try:
+                    url = f"{self.client.searches.api_url}/searches/{sid}/responses"  # type: ignore[attr-defined]
+                    batch = self.client.searches.session.get(url, params=params).json()  # type: ignore[attr-defined]
+                except Exception:
+                    batch = self.client.searches.search_responses(sid)  # type: ignore[attr-defined]
+                if batch:
+                    results.extend(batch)
+                    if len(results) >= response_limit:
+                        break
+                time.sleep(0.5)
+            if not results:
+                params = {"token": token} if token is not None else {}
+                try:
+                    url = f"{self.client.searches.api_url}/searches/{sid}/responses"  # type: ignore[attr-defined]
+                    results = self.client.searches.session.get(url, params=params).json()  # type: ignore[attr-defined]
+                except Exception:
+                    results = self.client.searches.search_responses(sid)  # type: ignore[attr-defined]
+
+            if results:
+                break
+
+        if not sid or not results:
             return []
-        results = self.client.searches.search_responses(sid)  # type: ignore[attr-defined]
-        # responses are grouped by user -> files; flatten
+
         candidates: List[Candidate] = []
+        seen = set()
         for r in results:
+            if not isinstance(r, dict):
+                continue
             user = r.get("username") or r.get("user")
-            files = r.get("files") or []
-            for f in files:
-                # decorate with username
+            files = r.get("files")
+            if files is None:
+                files = [r]
+            for f in files or []:
+                if not isinstance(f, dict):
+                    continue
                 f = dict(f)
-                f["username"] = user
-                fname = f.get("filename") or f.get("file") or ""
+                f["username"] = user or f.get("username") or f.get("user")
+                fname = f.get("filename") or f.get("file") or f.get("path") or ""
                 if not fname:
                     continue
                 if lossless_only and not is_lossless_path(fname):
                     continue
                 cand = self._normalize_resp(f, preferred)
-                # If lossless_only, require ext_score>0; else accept any
-                if lossless_only and cand.ext_score <= 0:
+                key = (cand.username, cand.filename)
+                if key in seen:
                     continue
+                seen.add(key)
                 candidates.append(cand)
-        # sort by score (ext, speed desc, queue asc)
         candidates.sort(key=lambda c: c.score(), reverse=True)
         return candidates
 
@@ -152,33 +213,73 @@ class SoulseekClient:
         return bool(ok)
 
     def wait_for_completion(
-        self, user: str, target_basename: str, timeout_s: float = 600.0, poll_s: float = 2.0
+        self,
+        user: str,
+        target_basename: str,
+        timeout_s: float = 120.0,
+        poll_s: float = 2.0,
+        progress_cb=None,
+        file_finder: Optional[Callable[[], Optional[str]]] = None,
     ) -> Tuple[bool, Optional[Dict[str, Any]]]:
-        """Poll transfers until a matching download finishes (or fails/timeout).
-
-        We try to match by filename suffix because slskd provides the remote filename.
-        """
+        """Poll transfers until a matching download finishes (or fails/timeout)."""
         deadline = time.time() + timeout_s
+        target = basename_any(target_basename)
+        target_lower = target.lower()
+        last_state = None
+        last_percent = -1.0
         while time.time() < deadline:
-            # `get_downloads(user)` returns a dict keyed by id -> download info; sometimes list
+            if file_finder:
+                found = file_finder()
+                if found:
+                    if progress_cb and (last_state != "complete" or last_percent < 100.0):
+                        progress_cb("complete", 100.0)
+                    return True, {"filename": found, "state": "complete"}
             try:
                 downloads = self.client.transfers.get_downloads(user)  # type: ignore[attr-defined]
             except Exception:
                 downloads = self.client.transfers.get_all_downloads()  # type: ignore[attr-defined]
-            # Normalize into iterable of dicts
             if isinstance(downloads, dict):
                 iter_objs = downloads.values()
             else:
                 iter_objs = downloads
             for d in iter_objs:
+                if not isinstance(d, dict):
+                    continue
                 name = d.get("filename") or d.get("file") or ""
                 state = (d.get("state") or d.get("status") or "").lower()
-                if target_basename and name.endswith(target_basename):
+                normalized = basename_any(name)
+                normalized_lower = normalized.lower()
+                transferred = d.get("transferredBytes") or d.get("bytesTransferred") or d.get("transferred") or 0
+                try:
+                    transferred = int(transferred)
+                except Exception:
+                    transferred = 0
+                size = d.get("size") or d.get("filesize") or 0
+                try:
+                    size = int(size)
+                except Exception:
+                    size = 0
+                percent = (transferred / size * 100) if size else 0.0
+                if progress_cb and (
+                    normalized_lower == target_lower or normalized_lower.endswith(target_lower) or name.replace("\\", "/").lower().endswith(target_lower)
+                ):
+                    if state != last_state or percent - last_percent >= 1.0:
+                        progress_cb(state or "running", percent)
+                        last_state = state
+                        last_percent = percent
+                if target and (normalized_lower == target_lower or name.replace("\\", "/").lower().endswith(target_lower)):
                     if state in {"complete", "completed", "finished", "success"}:
                         return True, d
-                    if state in {"failed", "error", "cancelled"}:
+                    if state in {"failed", "error", "cancelled", "blocked", "denied", "banned"}:
+                        return False, d
+                    reason = (d.get("failureReason") or d.get("reason") or "").lower()
+                    if reason and any(word in reason for word in ["denied", "blocked", "banned"]):
                         return False, d
             time.sleep(poll_s)
-        return False, None
-            time.sleep(poll_s)
+        if file_finder:
+            found = file_finder()
+            if found:
+                if progress_cb and (last_state != "complete" or last_percent < 100.0):
+                    progress_cb("complete", 100.0)
+                return True, {"filename": found, "state": "complete"}
         return False, None

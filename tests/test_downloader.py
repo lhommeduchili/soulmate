@@ -18,9 +18,11 @@ class DummySoulseek(sl.SoulseekClient):
         ]
     def enqueue_download(self, user, filename, size):
         return True
-    def wait_for_completion(self, user, target, timeout_s=10.0, poll_s=0.1):
+    def wait_for_completion(self, user, target, timeout_s=10.0, poll_s=0.1, progress_cb=None):
         # Simulate that only file2 completes
         if "file2" in target:
+            if progress_cb:
+                progress_cb("complete", 100.0)
             return True, {"filename": f"/Music/{target}"}
         return False, {"filename": f"/Music/{target}", "state": "failed"}
 
