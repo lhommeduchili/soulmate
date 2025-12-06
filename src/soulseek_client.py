@@ -92,8 +92,8 @@ class SoulseekClient:
     def search_lossless(
         self,
         query: str,
-        search_timeout_ms: int = 12000,
-        response_limit: int = 60,
+        search_timeout_ms: int = 8000,
+        response_limit: int = 40,
         min_upload_speed_bps: int = 0,
         max_peer_queue: int = 1_000_000,
         preferred_ext: Optional[str] = None,
@@ -111,7 +111,8 @@ class SoulseekClient:
         results: List[Dict[str, Any]] = []
         sid: Optional[str] = None
         token: Optional[int] = None
-        while attempts < 4:
+        max_attempts = 1
+        while attempts < max_attempts:
             attempts += 1
             try:
                 resp = self.client.searches.search_text(  # type: ignore[attr-defined]
@@ -148,7 +149,8 @@ class SoulseekClient:
                 time.sleep(1.0 * attempts)
                 continue
 
-            deadline = time.time() + max(20.0, search_timeout_ms / 1000.0 + 10.0)
+            # Keep polling modestly; bail sooner if nothing comes back.
+            deadline = time.time() + max(10.0, search_timeout_ms / 1000.0 + 4.0)
             while time.time() < deadline:
                 params = {"token": token} if token is not None else {}
                 try:
@@ -170,6 +172,9 @@ class SoulseekClient:
                     results = self.client.searches.search_responses(sid)  # type: ignore[attr-defined]
 
             if results:
+                break
+            # If no results at all, don't keep retrying endlessly; break early.
+            if not results:
                 break
 
         if not sid or not results:

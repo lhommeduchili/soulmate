@@ -4,8 +4,10 @@ import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
     ArrowLeft, CheckCircle, AlertCircle, Loader, Download,
-    Terminal, FileAudio, Pause, Play, CheckSquare, Square
+    Terminal, FileAudio, Pause, Play, CheckSquare, Square,
+    LogOut, ClipboardCopy
 } from 'lucide-react';
+import { removeToken } from '../utils/auth';
 
 export default function JobView() {
     const { jobId } = useParams();
@@ -104,6 +106,22 @@ export default function JobView() {
         window.location.href = `/api/jobs/${jobId}/archive?indices=${indices}`;
     };
 
+    const handleLogout = () => {
+        removeToken();
+        window.location.href = '/login';
+    };
+
+    const handleCopyLogs = async () => {
+        try {
+            const text = (job?.logs || []).join('\n');
+            await navigator.clipboard.writeText(text);
+            // Optional: small UX feedback? keep console log to avoid extra UI
+            console.log('Logs copied to clipboard');
+        } catch (err) {
+            console.error('Failed to copy logs', err);
+        }
+    };
+
     if (jobError) {
         return (
             <div className="container">
@@ -130,6 +148,7 @@ export default function JobView() {
     const processed = job.processed_tracks || (job.ok_count + job.fail_count);
     const progress = job.total_tracks > 0 ? (processed / job.total_tracks) * 100 : 0;
     const isAllSelected = files.length > 0 && selectedIndices.size === files.length;
+    const failedTracks = job.failed_tracks || [];
 
     return (
         <div className="container">
@@ -137,7 +156,12 @@ export default function JobView() {
                 <Link to="/" className="btn btn-ghost">
                     <ArrowLeft size={16} /> Volver a playlists
                 </Link>
-                <span className="pill">Job #{jobId}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <span className="pill">Job #{jobId}</span>
+                    <button className="btn btn-ghost" onClick={handleLogout}>
+                        <LogOut size={16} /> Logout
+                    </button>
+                </div>
             </div>
 
             <div className="surface surface-borderless">
@@ -272,9 +296,14 @@ export default function JobView() {
                             <p className="muted" style={{ marginBottom: '6px' }}>Bitácora</p>
                             <h2>Logs en vivo</h2>
                         </div>
-                        <button className="small-btn" onClick={() => setShowLogs(!showLogs)}>
-                            <Terminal size={14} /> {showLogs ? 'Ocultar' : 'Mostrar'}
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button className="small-btn" onClick={handleCopyLogs} title="Copiar logs al portapapeles">
+                                <ClipboardCopy size={14} /> Copiar
+                            </button>
+                            <button className="small-btn" onClick={() => setShowLogs(!showLogs)}>
+                                <Terminal size={14} /> {showLogs ? 'Ocultar' : 'Mostrar'}
+                            </button>
+                        </div>
                     </div>
 
                     {showLogs ? (
@@ -293,6 +322,61 @@ export default function JobView() {
                         <div className="empty-state" style={{ padding: '1.4rem' }}>Logs ocultos para esta sesión.</div>
                     )}
                 </div>
+            </div>
+
+            <div className="surface" style={{ marginTop: '1.5rem' }}>
+                <div className="panel-title">
+                    <div>
+                        <p className="muted" style={{ marginBottom: '6px' }}>Pendientes / fallidos</p>
+                        <h2>Fuentes no descargadas ({failedTracks.length})</h2>
+                    </div>
+                </div>
+                {failedTracks.length === 0 ? (
+                    <div className="empty-state">Todo ok por ahora.</div>
+                ) : (
+                    <div className="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Track</th>
+                                    <th>Búsquedas</th>
+                                    <th>Intentos</th>
+                                    <th>Detalle</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {failedTracks.map((ft, idx) => (
+                                    <tr key={`${ft.title}-${idx}`}>
+                                        <td>
+                                            <div style={{ fontWeight: 600 }}>{ft.artist} - {ft.title}</div>
+                                            <div className="muted" style={{ fontSize: '0.85rem' }}>{ft.album}</div>
+                                        </td>
+                                        <td>
+                                            <div className="chip-row" style={{ gap: '6px', flexWrap: 'wrap' }}>
+                                                {(ft.search_results && ft.search_results.length > 0 ? ft.search_results : (ft.queries || []).map(q => ({ query: q, hits: null }))).map((sr, qIdx) => (
+                                                    <span key={qIdx} className="chip">
+                                                        {sr.query}
+                                                        {sr.hits !== null && sr.hits !== undefined ? ` (${sr.hits} hits${sr.lossless_only === false ? ', lossy' : ''})` : ''}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div style={{ maxWidth: 280 }}>
+                                                {(ft.candidates || []).map((c, cIdx) => (
+                                                    <div key={cIdx} className="muted" style={{ fontSize: '0.85rem' }}>• {c}</div>
+                                                ))}
+                                            </div>
+                                        </td>
+                                        <td style={{ maxWidth: 260 }}>
+                                            <div className="muted" style={{ fontSize: '0.95rem' }}>{ft.message}</div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -12,6 +12,7 @@ class JobState:
     ok_count: int
     fail_count: int
     logs: list = field(default_factory=list)
+    failed_tracks: list = field(default_factory=list)  # list of dicts with track/error info
     result_path: str = ""
     processed_tracks: int = 0  # completed tracks
     files: list = field(default_factory=list)  # list of relative file paths for direct download

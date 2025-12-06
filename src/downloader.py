@@ -18,6 +18,9 @@ class DownloadOutcome:
     success: bool
     message: str
     path: Optional[str] = None
+    queries: List[str] = None
+    candidates: List[str] = None
+    search_results: List[dict] = None
 
 
 class Downloader:
@@ -75,15 +78,18 @@ class Downloader:
         """Search best sources for a track and attempt download with retries."""
         display_name = f"{track.artist} - {track.title}"
         self._matrix_print(f"Searching: {display_name}", progress_callback)
+        queries = list(track.query_strings())
+        search_results: List[dict] = []
         # Aggregate candidates across a couple queries
         seen = set()
         candidates: List[Candidate] = []
-        for q in track.query_strings():
+        for q in queries:
             self._matrix_print(f" · Query: {q}", progress_callback)
             # Serialize searches to avoid slskd rate limits when running in parallel.
             with self._search_lock:
                 cands = self.slsk.search_lossless(q, preferred_ext=self.preferred_ext)
             self._matrix_print(f"   ↳ {len(cands)} hits", progress_callback)
+            search_results.append({"query": q, "hits": len(cands), "lossless_only": True})
             for preview in cands[:5]:
                 self._matrix_print("     · " + self._candidate_label(preview), progress_callback)
             for c in cands:
@@ -95,15 +101,16 @@ class Downloader:
             if not self.allow_lossy_fallback:
                 msg = "No lossless sources found"
                 self._matrix_print(f" ! {msg}", progress_callback)
-                return DownloadOutcome(track, False, msg)
+                return DownloadOutcome(track, False, msg, queries=queries, candidates=[], search_results=search_results)
             # Fallback: search any format
-            for q in track.query_strings():
+            for q in queries:
                 self._matrix_print(f" · Query (lossy ok): {q}", progress_callback)
                 with self._search_lock:
                     cands = self.slsk.search_lossless(
                         q, preferred_ext=self.preferred_ext, lossless_only=False
                     )
                 self._matrix_print(f"   ↳ {len(cands)} hits", progress_callback)
+                search_results.append({"query": q, "hits": len(cands), "lossless_only": False})
                 for preview in cands[:5]:
                     self._matrix_print("     · " + self._candidate_label(preview), progress_callback)
                 for c in cands:
@@ -114,16 +121,18 @@ class Downloader:
             if not candidates:
                 msg = "No sources found (even lossy)"
                 self._matrix_print(f" ! {msg}", progress_callback)
-                return DownloadOutcome(track, False, msg)
+                return DownloadOutcome(track, False, msg, queries=queries, candidates=[], search_results=search_results)
         # Try best -> worst, honour max_retries (per-track)
         tried = 0
+        tried_labels: List[str] = []
         for cand in candidates:
             tried += 1
             if tried > self.max_retries:
                 break
             self._matrix_print(" ↳ candidate: " + self._candidate_label(cand), progress_callback)
+            tried_labels.append(self._candidate_label(cand))
             if self.dry_run:
-                return DownloadOutcome(track, True, "Dry-run (skipped download)")
+                return DownloadOutcome(track, True, "Dry-run (skipped download)", queries=queries, candidates=tried_labels)
             try:
                 ok = self.slsk.enqueue_download(cand.username, cand.filename, cand.size)
                 if not ok:
@@ -170,7 +179,8 @@ class Downloader:
                         failure = meta.get("failureReason") or meta.get("reason") or meta.get("error") or meta.get("status")
                         if failure:
                             reason = f" ({failure})"
-                    self._matrix_print(f" ! candidate failed or timeout{reason}", progress_callback)
+                    fail_msg = f"candidate failed or timeout{reason}"
+                    self._matrix_print(f" ! {fail_msg}", progress_callback)
                     self.logger.info("candidate failed or timeout; trying next...")
                     continue
             else:
@@ -195,16 +205,18 @@ class Downloader:
                 shutil.copy2(src_guess, dst_path)
                 os.remove(src_guess)
             self._matrix_print(f" ✓ Saved {final_name}", progress_callback)
-            return DownloadOutcome(track, True, "OK", path=dst_path)
-        msg = "All candidates failed"
+            return DownloadOutcome(
+                track, True, "OK", path=dst_path, queries=queries, candidates=tried_labels, search_results=search_results
+            )
+        msg = f"All candidates failed after {len(tried_labels)} tries"
         self._matrix_print(" ! " + msg, progress_callback)
-        return DownloadOutcome(track, False, msg)
+        return DownloadOutcome(track, False, msg, queries=queries, candidates=tried_labels, search_results=search_results)
 
     def run(self, playlist_name: str, tracks: List[Track], progress_callback=None, pause_handler=None) -> Tuple[int, int]:
         """Process all tracks (optionally in parallel). progress_callback(type, data) if provided."""
         total = len(tracks)
-        # Default to a safe small parallelism (3) unless a cap was provided.
-        pool_size = self.concurrency if self.concurrency and self.concurrency > 0 else min(3, max(1, total))
+        # Default to sequential to keep status/logs consistent unless a cap was provided.
+        pool_size = self.concurrency if self.concurrency and self.concurrency > 0 else 1
 
         lock = threading.Lock()
         counters = {"ok": 0, "fail": 0}
@@ -232,10 +244,15 @@ class Downloader:
                     "current": i,
                     "total": total,
                     "track": t.title,
+                    "artist": getattr(t, "artist", ""),
+                    "album": getattr(t, "album", ""),
                     "ok": ok_now,
                     "fail": fail_now,
                     "success": outcome.success,
                     "message": outcome.message,
+                    "queries": outcome.queries or [],
+                    "candidates": outcome.candidates or [],
+                    "search_results": outcome.search_results or [],
                 },
             )
 

@@ -120,6 +120,21 @@ def _download_worker(
                 job.ok_count = data["ok"]
                 job.fail_count = data["fail"]
                 job.processed_tracks = data["current"]
+                job.current_track_name = data.get("track") or ""
+                job.current_download_percent = 0.0
+                job.current_download_state = ""
+                if not data.get("success"):
+                    job.failed_tracks.append(
+                        {
+                            "artist": data.get("artist") or "",
+                            "title": data.get("track") or "",
+                            "album": data.get("album") or "",
+                            "message": data.get("message") or "",
+                            "queries": data.get("queries") or [],
+                            "candidates": data.get("candidates") or [],
+                            "search_results": data.get("search_results") or [],
+                        }
+                    )
                 # Update file list incrementally
                 collected = []
                 for root, _, files in os.walk(output_dir):
@@ -135,6 +150,7 @@ def _download_worker(
                 job.current_download_percent = 0.0
                 job.current_download_state = ""
             elif type_ == "download_progress":
+                job.current_track_name = data.get("track") or job.current_track_name
                 job.current_download_percent = data.get("percent", 0.0)
                 job.current_download_state = data.get("state", "")
         
