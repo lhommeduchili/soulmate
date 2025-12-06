@@ -21,6 +21,9 @@ ALLOWED_FORMATS = {"wav", "flac", "aiff"}
 
 router = APIRouter(prefix="/api")
 
+def _active_job_count() -> int:
+    return sum(1 for j in JOBS.values() if j.status in {"pending", "running", "paused"})
+
 def get_spotify_oauth():
     return SpotifyOAuth(
         client_id=os.getenv("SPOTIPY_CLIENT_ID"),
@@ -143,6 +146,10 @@ class DownloadCandidateRequest(BaseModel):
 
 @router.post("/download")
 def start_download(req: DownloadRequest):
+    from src.web.state import MAX_CONCURRENT_JOBS
+
+    if _active_job_count() >= MAX_CONCURRENT_JOBS:
+        raise HTTPException(status_code=429, detail="Límite de sesiones concurrentes alcanzado. Intenta más tarde.")
     # We need full token_info for the background worker (to refresh if needed)
     token_info = req.token_info
     preferred_format = (req.preferred_format or "wav").lower()

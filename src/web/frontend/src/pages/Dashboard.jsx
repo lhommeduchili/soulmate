@@ -55,7 +55,11 @@ export default function Dashboard() {
             navigate(`/job/${res.data.job_id}`);
         } catch (err) {
             console.error(err);
-            alert("Failed to start download. Check server logs.");
+            if (err.response && err.response.status === 429) {
+                alert("Límite de sesiones concurrentes alcanzado. Intenta más tarde.");
+            } else {
+                alert("Failed to start download. Check server logs.");
+            }
         }
     };
 

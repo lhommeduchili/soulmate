@@ -23,3 +23,4 @@ class JobState:
 
 # Global in-memory store
 JOBS: Dict[str, JobState] = {}
+MAX_CONCURRENT_JOBS = 6
