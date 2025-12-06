@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse, FileResponse
 from spotipy.oauth2 import SpotifyOAuth
 from urllib.parse import quote
 import shutil
+import shutil
 import tempfile
 import zipfile
 
@@ -276,7 +277,10 @@ def get_job(job_id: str):
     job = JOBS.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    return job
+    # Include pending count for frontend polling
+    payload = job.__dict__.copy()
+    payload["pending_count"] = len(getattr(job, "pending_files", []) or [])
+    return payload
 
 @router.get("/jobs/{job_id}/download")
 def download_job_result(job_id: str):
@@ -307,6 +311,55 @@ def download_job_file(job_id: str, file_path: str):
         raise HTTPException(status_code=404, detail="File not found")
     filename = os.path.basename(full_path)
     return FileResponse(full_path, media_type="application/octet-stream", filename=filename)
+
+
+@router.get("/jobs/{job_id}/next_file")
+def stream_next_file(job_id: str, background_tasks: BackgroundTasks):
+    """Serve the next pending file for this job and delete it on the server after sending."""
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    pending = getattr(job, "pending_files", [])
+    if not pending:
+        return Response(status_code=204)
+    rel_path = pending.pop(0)
+    output_root = os.getenv("OUTPUT_ROOT", "downloads")
+    safe_root = os.path.abspath(output_root)
+    full_path = os.path.abspath(os.path.join(output_root, rel_path))
+    if not full_path.startswith(safe_root):
+        raise HTTPException(status_code=400, detail="Invalid file path")
+    if not os.path.exists(full_path):
+        job.served_files.add(rel_path)
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    job.served_files.add(rel_path)
+    job.pending_files = pending
+    # remove from files list if present
+    if rel_path in job.files:
+        job.files.remove(rel_path)
+
+    def _cleanup():
+        try:
+            os.remove(full_path)
+            # Optionally prune empty dirs
+            dir_path = os.path.dirname(full_path)
+            while dir_path.startswith(safe_root):
+                if not os.listdir(dir_path):
+                    os.rmdir(dir_path)
+                    dir_path = os.path.dirname(dir_path)
+                else:
+                    break
+        except Exception:
+            pass
+
+    background_tasks.add_task(_cleanup)
+    filename = os.path.basename(full_path)
+    return FileResponse(
+        full_path,
+        media_type="application/octet-stream",
+        filename=filename,
+        background=background_tasks,
+    )
 
 
 @router.get("/jobs/{job_id}/file_by_index/{index}")
@@ -351,6 +404,23 @@ def resume_job(job_id: str):
     if job.status == "paused":
         job.status = "running"
         job.logs.append("Job resumed.")
+    return {"status": job.status}
+
+@router.post("/jobs/{job_id}/cancel")
+def cancel_job(job_id: str):
+    """Cancel a job and remove its downloaded files on the server."""
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job.status = "cancelled"
+    job.logs.append("Job cancelled by user; cleaning up files.")
+    output_root = os.getenv("OUTPUT_ROOT", "downloads")
+    job_dir = os.path.join(output_root, job_id)
+    if os.path.exists(job_dir):
+        shutil.rmtree(job_dir, ignore_errors=True)
+    job.files = []
+    job.pending_files = []
+    job.served_files = set()
     return {"status": job.status}
 
 @router.get("/jobs/{job_id}/archive")

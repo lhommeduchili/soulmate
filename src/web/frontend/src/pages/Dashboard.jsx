@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Disc, Download, Search, X, Settings, Music, Zap, ListMusic } from 'lucide-react';
+import { Disc, Download, Search, X, Settings, Music, Zap, ListMusic, LogOut } from 'lucide-react';
 
-import { isAuthenticated, getToken } from '../utils/auth';
+import { isAuthenticated, getToken, removeToken } from '../utils/auth';
 
 export default function Dashboard() {
     const [playlists, setPlaylists] = useState([]);
@@ -59,6 +59,11 @@ export default function Dashboard() {
         }
     };
 
+    const handleLogout = () => {
+        removeToken();
+        navigate('/login');
+    };
+
     const inspectPlaylist = (id) => {
         navigate(`/inspect/${id}`);
     };
@@ -96,9 +101,14 @@ export default function Dashboard() {
                         <span>Spotify → Soulseek lossless</span>
                     </div>
                 </div>
-                <div className="chip-row">
-                    <span className="pill"><Zap size={15} /> Descarga rápida</span>
-                    <span className="pill"><Settings size={15} /> {preferredFormat.toUpperCase()} preferido</span>
+                <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+                    <div className="chip-row">
+                        <span className="pill"><Zap size={15} /> Descarga rápida</span>
+                        <span className="pill"><Settings size={15} /> {preferredFormat.toUpperCase()} preferido</span>
+                    </div>
+                    <button className="btn btn-ghost" onClick={handleLogout}>
+                        <LogOut size={16} /> Logout
+                    </button>
                 </div>
             </header>
 

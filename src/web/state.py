@@ -16,6 +16,8 @@ class JobState:
     result_path: str = ""
     processed_tracks: int = 0  # completed tracks
     files: list = field(default_factory=list)  # list of relative file paths for direct download
+    pending_files: list = field(default_factory=list)  # files waiting to be pulled by client
+    served_files: set = field(default_factory=set)  # files already handed off to client
     current_download_percent: float = 0.0
     current_download_state: str = ""
 

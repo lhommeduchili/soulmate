@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
     ArrowLeft, CheckCircle, AlertCircle, Loader, Download,
@@ -20,6 +20,8 @@ export default function JobView() {
 
     const scrollRef = useRef(null);
     const intervalRef = useRef(null);
+    const jobRef = useRef(null);
+    const navigate = useNavigate();
 
     useEffect(() => {
         intervalRef.current = setInterval(fetchJob, 1000);
@@ -28,6 +30,21 @@ export default function JobView() {
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
     }, [jobId]);
+
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            if (jobRef.current && (jobRef.current.status === 'running' || jobRef.current.status === 'paused')) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, []);
+
+    useEffect(() => {
+        jobRef.current = job;
+    }, [job]);
 
     useEffect(() => {
         if (showLogs && scrollRef.current) {
@@ -41,7 +58,6 @@ export default function JobView() {
             setJob(res.data);
             setJobError(null);
             fetchFiles();
-
             if (res.data.status === 'completed' || res.data.status === 'failed') {
                 if (intervalRef.current) clearInterval(intervalRef.current);
             }
@@ -80,6 +96,19 @@ export default function JobView() {
         }
     };
 
+    const handleCancel = async () => {
+        const currentJob = jobRef.current;
+        if (!currentJob) return;
+        const confirm = window.confirm("Se cancelará el job y se borrarán los archivos en el servidor. ¿Continuar?");
+        if (!confirm) return;
+        try {
+            await axios.post(`/api/jobs/${jobId}/cancel`);
+            navigate('/');
+        } catch (err) {
+            console.error("Failed to cancel job", err);
+        }
+    };
+
     const toggleSelection = (index) => {
         const newSet = new Set(selectedIndices);
         if (newSet.has(index)) {
@@ -106,7 +135,17 @@ export default function JobView() {
         window.location.href = `/api/jobs/${jobId}/archive?indices=${indices}`;
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        const currentJob = jobRef.current;
+        if (currentJob && (currentJob.status === 'running' || currentJob.status === 'paused')) {
+            const ok = window.confirm("Se cancelará el job y se borrarán los archivos en el servidor. ¿Cerrar sesión igual?");
+            if (!ok) return;
+            try {
+                await axios.post(`/api/jobs/${jobId}/cancel`);
+            } catch (e) {
+                console.error('Failed to cancel on logout', e);
+            }
+        }
         removeToken();
         window.location.href = '/login';
     };
@@ -153,9 +192,17 @@ export default function JobView() {
     return (
         <div className="container">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
-                <Link to="/" className="btn btn-ghost">
+                    <button className="btn btn-ghost" onClick={() => {
+                        if (job.status === 'running' || job.status === 'paused') {
+                            const ok = window.confirm("Si vuelves atrás mientras el job está activo se cancelará y se borrarán sus archivos. ¿Volver?");
+                            if (!ok) return;
+                            handleCancel();
+                            return;
+                        }
+                        navigate('/');
+                    }}>
                     <ArrowLeft size={16} /> Volver a playlists
-                </Link>
+                </button>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                     <span className="pill">Job #{jobId}</span>
                     <button className="btn btn-ghost" onClick={handleLogout}>
@@ -178,10 +225,15 @@ export default function JobView() {
                         </div>
                     </div>
                     {(job.status === 'running' || job.status === 'paused') && (
-                        <button onClick={togglePause} className="btn btn-primary" disabled={isPausing}>
-                            {isPausing ? <Loader size={18} className="animate-spin" /> :
-                                job.status === 'running' ? <><Pause size={18} /> Pausar</> : <><Play size={18} /> Reanudar</>}
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button onClick={togglePause} className="btn btn-primary" disabled={isPausing}>
+                                {isPausing ? <Loader size={18} className="animate-spin" /> :
+                                    job.status === 'running' ? <><Pause size={18} /> Pausar</> : <><Play size={18} /> Reanudar</>}
+                            </button>
+                            <button onClick={handleCancel} className="btn btn-ghost danger">
+                                Terminar y borrar
+                            </button>
+                        </div>
                     )}
                 </div>
 

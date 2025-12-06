@@ -74,6 +74,21 @@ class Downloader:
                     return os.path.join(root, f)
         return None
 
+    def _cleanup_empty_dirs(self, base_dir: str, path: str) -> None:
+        """Remove empty parent directories up to base_dir (non-destructive if not empty)."""
+        try:
+            current = os.path.dirname(path)
+            base_dir = os.path.abspath(base_dir)
+            while current.startswith(base_dir):
+                if not os.listdir(current):
+                    os.rmdir(current)
+                    current = os.path.dirname(current)
+                else:
+                    break
+        except Exception:
+            # Best effort; ignore failures
+            pass
+
     def process_track(self, track: Track, progress_callback=None) -> DownloadOutcome:
         """Search best sources for a track and attempt download with retries."""
         display_name = f"{track.artist} - {track.title}"
@@ -204,6 +219,8 @@ class Downloader:
                 # Cross-device move?
                 shutil.copy2(src_guess, dst_path)
                 os.remove(src_guess)
+            # Clean empty album folders left in slskd download dir
+            self._cleanup_empty_dirs(self.slskd_download_dir, src_guess)
             self._matrix_print(f" ✓ Saved {final_name}", progress_callback)
             return DownloadOutcome(
                 track, True, "OK", path=dst_path, queries=queries, candidates=tried_labels, search_results=search_results

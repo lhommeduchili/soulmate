@@ -143,6 +143,14 @@ def _download_worker(
                         rel_path = os.path.relpath(abs_path, output_root)
                         collected.append(rel_path)
                 job.files = sorted(collected)
+                existing_served = set(job.served_files) if hasattr(job, "served_files") else set()
+                pending_set = set(job.pending_files) if hasattr(job, "pending_files") else set()
+                current_set = set(collected)
+                new_files = current_set - existing_served - pending_set
+                if new_files:
+                    pending = list(pending_set | new_files)
+                    pending.sort()
+                    job.pending_files = pending
             elif type_ == "done":
                 job.ok_count = data["ok"]
                 job.fail_count = data["fail"]
@@ -153,7 +161,7 @@ def _download_worker(
                 job.current_track_name = data.get("track") or job.current_track_name
                 job.current_download_percent = data.get("percent", 0.0)
                 job.current_download_state = data.get("state", "")
-        
+
         def pause_handler():
             """Block if job status is 'paused'."""
             import time
@@ -163,6 +171,8 @@ def _download_worker(
                 if current_status == "paused":
                     time.sleep(1)
                     continue
+                if current_status == "cancelled":
+                    raise RuntimeError("Job cancelled")
                 # If cancelled or failed, we might want to stop, but for now just let it proceed 
                 # (or let the main loop handle it if we added cancellation support)
                 break
@@ -181,9 +191,13 @@ def _download_worker(
         job.status = "completed"
         
     except Exception as e:
-        job.status = "failed"
-        job.logs.append(f"Error: {str(e)}")
-        print(f"Job {job_id} failed: {e}")
+        if str(e) == "Job cancelled":
+            job.status = "cancelled"
+            job.logs.append("Job cancelled.")
+        else:
+            job.status = "failed"
+            job.logs.append(f"Error: {str(e)}")
+            print(f"Job {job_id} failed: {e}")
 
 
 def _build_spotify_client(token_info: dict) -> Tuple[SpotifyClient, dict]:
