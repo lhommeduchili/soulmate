@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from src.downloader import Downloader
 from src.soulseek_client import SoulseekClient
 from src.spotify_client import SpotifyClient
-from src.utils.formatting import safe_filename
+from src.utils.formatting import DEFAULT_FORMAT_PREFERENCE, normalize_format_preference, safe_filename
 from src.utils.logging import setup_logger
 
 
@@ -30,14 +30,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--preferred-format",
         choices=["wav", "flac", "aiff", "alac"],
-        default="wav",
-        help="Preferred lossless format when ranking search results",
+        help="First choice format (legacy). If omitted, defaults to the built-in preference order.",
+    )
+    p.add_argument(
+        "--format-preference",
+        help="Comma-separated priority list, e.g. aiff,flac,wav[,lossy]. Defaults to aiff,flac,wav.",
     )
     p.add_argument(
         "--allow-lossy-fallback",
         action="store_true",
         default=True,
         help="If no lossless sources are found, allow falling back to other formats (e.g. MP3). Default: on.",
+    )
+    p.add_argument(
+        "--no-lossy-fallback",
+        action="store_false",
+        dest="allow_lossy_fallback",
+        help="Forzar solo lossless (ignora lossy incluso si no hay fuentes).",
     )
     return p
 
@@ -70,8 +79,20 @@ def run_cli(args: Optional[argparse.Namespace] = None) -> int:
     playlist_dir = os.path.join(args.output_root, safe_filename(playlist_name))
     os.makedirs(playlist_dir, exist_ok=True)
 
+    format_preference_arg = None
+    if args.format_preference:
+        format_preference_arg = [p.strip() for p in args.format_preference.split(",") if p.strip()]
+    elif args.preferred_format:
+        format_preference_arg = [args.preferred_format]
+    prefs = normalize_format_preference(format_preference_arg or DEFAULT_FORMAT_PREFERENCE)
+    if args.allow_lossy_fallback:
+        if "lossy" not in prefs:
+            prefs.append("lossy")
+    else:
+        prefs = [p for p in prefs if p != "lossy"]
+
     if args.slskd_api_key:
-        slsk = SoulseekClient(host=args.slskd_host, api_key=args.slskd_api_key, preferred_ext=args.preferred_format)
+        slsk = SoulseekClient(host=args.slskd_host, api_key=args.slskd_api_key, format_preferences=prefs)
     else:
         if not args.slskd_pass:
             raise SystemExit("--slskd-pass required when using --slskd-user")
@@ -79,7 +100,7 @@ def run_cli(args: Optional[argparse.Namespace] = None) -> int:
             host=args.slskd_host,
             username=args.slskd_user,
             password=args.slskd_pass,
-            preferred_ext=args.preferred_format,
+            format_preferences=prefs,
         )
 
     dl = Downloader(
@@ -87,7 +108,8 @@ def run_cli(args: Optional[argparse.Namespace] = None) -> int:
         slskd_download_dir=args.slskd_download_dir,
         output_dir=playlist_dir,
         max_retries=args.max_retries,
-        preferred_ext=args.preferred_format,
+        preferred_ext=None,
+        format_preferences=prefs,
         allow_lossy_fallback=args.allow_lossy_fallback,
         dry_run=args.dry_run,
     )

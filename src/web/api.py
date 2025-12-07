@@ -7,7 +7,6 @@ from fastapi.responses import RedirectResponse, FileResponse
 from spotipy.oauth2 import SpotifyOAuth
 from urllib.parse import quote
 import shutil
-import shutil
 import tempfile
 import zipfile
 
@@ -15,9 +14,9 @@ from src.web.state import JOBS
 from src.web.worker import start_download_job
 from src.spotify_client import Track, SpotifyClient
 from src.soulseek_client import SoulseekClient, Candidate
-from src.utils.formatting import basename_any, safe_filename, is_lossless_path
+from src.utils.formatting import DEFAULT_FORMAT_PREFERENCE, basename_any, is_lossless_path, normalize_format_preference, safe_filename
 
-ALLOWED_FORMATS = {"wav", "flac", "aiff"}
+ALLOWED_FORMATS = {"wav", "flac", "aiff", "alac", "lossy"}
 
 router = APIRouter(prefix="/api")
 
@@ -120,7 +119,8 @@ from pydantic import BaseModel
 class DownloadRequest(BaseModel):
     playlist_id: str
     token_info: Dict[str, Any]
-    preferred_format: str = "wav"
+    preferred_format: Optional[str] = None
+    format_preferences: Optional[List[str]] = None
     allow_lossy_fallback: bool = True
     track_limit: Optional[int] = None
 
@@ -152,9 +152,22 @@ def start_download(req: DownloadRequest):
         raise HTTPException(status_code=429, detail="Límite de sesiones concurrentes alcanzado. Intenta más tarde.")
     # We need full token_info for the background worker (to refresh if needed)
     token_info = req.token_info
-    preferred_format = (req.preferred_format or "wav").lower()
-    if preferred_format not in ALLOWED_FORMATS:
-        raise HTTPException(status_code=400, detail="Formato no soportado. Usa wav, flac o aiff.")
+    submitted_formats: List[str] = []
+    if req.format_preferences:
+        submitted_formats = req.format_preferences
+    elif req.preferred_format:
+        submitted_formats = [req.preferred_format]
+
+    invalid = [f for f in submitted_formats if f and str(f).lower().lstrip(".") not in ALLOWED_FORMATS]
+    if invalid:
+        raise HTTPException(status_code=400, detail="Formato no soportado. Usa aiff, flac, wav o lossy.")
+
+    format_preferences = normalize_format_preference(submitted_formats or None)
+    if req.allow_lossy_fallback:
+        if "lossy" not in format_preferences:
+            format_preferences.append("lossy")
+    else:
+        format_preferences = [p for p in format_preferences if p != "lossy"]
     track_limit = req.track_limit
     if track_limit is not None and track_limit <= 0:
         track_limit = None
@@ -172,7 +185,7 @@ def start_download(req: DownloadRequest):
         slskd_host=slskd_host,
         slskd_api_key=slskd_api_key,
         slskd_download_dir=slskd_download_dir,
-        preferred_format=preferred_format,
+        format_preferences=format_preferences,
         allow_lossy_fallback=req.allow_lossy_fallback,
         track_limit=track_limit,
     )
@@ -198,14 +211,15 @@ def get_candidates(playlist_id: str, token_data: Dict = Depends(get_current_user
     slskd_api_key = os.getenv("SLSKD_API_KEY")
     if not slskd_host or not slskd_api_key:
         raise HTTPException(status_code=500, detail="Server misconfigured (missing Slskd config)")
-    slsk_client = SoulseekClient(host=slskd_host, api_key=slskd_api_key, preferred_ext="flac")
+    preview_prefs = normalize_format_preference([*DEFAULT_FORMAT_PREFERENCE, "lossy"])
+    slsk_client = SoulseekClient(host=slskd_host, api_key=slskd_api_key, format_preferences=preview_prefs)
 
     result: List[Dict[str, Any]] = []
     for t in tracks:
         seen = set()
         cands: List[Candidate] = []
         for q in t.query_strings():
-            for c in slsk_client.search_lossless(q, preferred_ext="flac", lossless_only=False, response_limit=40):
+            for c in slsk_client.search_lossless(q, format_preferences=preview_prefs, lossless_only=False, response_limit=40):
                 key = (c.username, c.filename)
                 if key in seen:
                     continue
@@ -236,7 +250,7 @@ def download_candidate(req: DownloadCandidateRequest):
     track = Track(artist=req.track.get("artist", ""), title=req.track.get("title", ""), album=req.track.get("album", ""))
     cand = req.candidate
 
-    slsk_client = SoulseekClient(host=slskd_host, api_key=slskd_api_key, preferred_ext="flac")
+    slsk_client = SoulseekClient(host=slskd_host, api_key=slskd_api_key, format_preferences=DEFAULT_FORMAT_PREFERENCE)
     base_remote = basename_any(cand.filename)
 
     def locate_download() -> Optional[str]:

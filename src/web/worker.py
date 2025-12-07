@@ -10,6 +10,7 @@ from src.spotify_client import SpotifyClient
 from src.soulseek_client import SoulseekClient
 from src.downloader import Downloader
 from src.web.state import JOBS, JobState
+from src.utils.formatting import DEFAULT_FORMAT_PREFERENCE, normalize_format_preference
 
 def start_download_job(
     token_info: dict,
@@ -17,7 +18,7 @@ def start_download_job(
     slskd_host: str,
     slskd_api_key: str,
     slskd_download_dir: str,
-    preferred_format: str = "wav",
+    format_preferences: Optional[List[str]] = None,
     allow_lossy_fallback: bool = True,
     track_limit: Optional[int] = None,
 ) -> str:
@@ -46,7 +47,7 @@ def start_download_job(
             slskd_host,
             slskd_api_key,
             slskd_download_dir,
-            preferred_format,
+            format_preferences,
             allow_lossy_fallback,
             track_limit,
         ),
@@ -63,14 +64,20 @@ def _download_worker(
     slskd_host: str,
     slskd_api_key: str,
     slskd_download_dir: str,
-    preferred_format: str,
+    format_preferences: Optional[List[str]],
     allow_lossy_fallback: bool,
     track_limit: Optional[int],
 ):
     """Background thread: fetch playlist, search on slskd, download, zip, update JOBS."""
     job = JOBS[job_id]
     job.status = "running"
-    job.logs.append(f"Job {job_id} started · format={preferred_format} · lossy_ok={allow_lossy_fallback}")
+    prefs = normalize_format_preference(format_preferences or DEFAULT_FORMAT_PREFERENCE)
+    if allow_lossy_fallback and "lossy" not in prefs:
+        prefs = prefs + ["lossy"]
+    if not allow_lossy_fallback:
+        prefs = [p for p in prefs if p != "lossy"]
+    pref_label = " > ".join(prefs)
+    job.logs.append(f"Job {job_id} started · prefer={pref_label} · lossy_ok={allow_lossy_fallback}")
     
     try:
         sp_client, token_info = _build_spotify_client(token_info)
@@ -83,7 +90,7 @@ def _download_worker(
         job.total_tracks = len(tracks)
         job.logs.append(f"Playlist: {playlist_name} ({job.total_tracks} tracks queued)")
         
-        slsk_client = SoulseekClient(host=slskd_host, api_key=slskd_api_key, preferred_ext=preferred_format)
+        slsk_client = SoulseekClient(host=slskd_host, api_key=slskd_api_key, format_preferences=prefs)
         
         output_root = os.getenv("OUTPUT_ROOT", "downloads")
         os.makedirs(output_root, exist_ok=True)
@@ -101,7 +108,8 @@ def _download_worker(
             slskd_download_dir=slskd_download_dir,
             output_dir=output_dir,
             max_retries=3,
-            preferred_ext=preferred_format,
+            preferred_ext=None,
+            format_preferences=prefs,
             allow_lossy_fallback=allow_lossy_fallback,
             concurrency=concurrency_env if concurrency_env > 0 else None,
         )

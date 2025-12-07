@@ -2,15 +2,43 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Disc, Download, Search, X, Settings, Music, Zap, ListMusic, LogOut } from 'lucide-react';
+import { Disc, Download, Search, X, Settings, Music, Zap, ListMusic, LogOut, ChevronUp, ChevronDown } from 'lucide-react';
 
 import { isAuthenticated, getToken, removeToken } from '../utils/auth';
+
+const DEFAULT_FORMAT_ORDER = ['aiff', 'flac', 'wav', 'lossy'];
+const FORMAT_LABELS = {
+    aiff: 'AIFF',
+    flac: 'FLAC',
+    wav: 'WAV',
+    lossy: 'Lossy',
+};
+const FORMAT_DESCRIPTIONS = {
+    aiff: 'Sin compresión, máxima fidelidad.',
+    flac: 'Compresión sin pérdida, archivos más ligeros.',
+    wav: 'Wave sin comprimir, compatible en todos lados.',
+    lossy: 'Acepta MP3/OGG cuando no hay lossless disponible.',
+};
+
+const sanitizePreference = (order = []) => {
+    const allowed = ['aiff', 'flac', 'wav', 'lossy'];
+    const clean = [];
+    order.forEach((fmt) => {
+        const key = String(fmt || '').toLowerCase();
+        if (allowed.includes(key) && !clean.includes(key)) clean.push(key);
+    });
+    allowed.forEach((fmt) => {
+        if (!clean.includes(fmt)) clean.push(fmt);
+    });
+    return clean;
+};
 
 export default function Dashboard() {
     const [playlists, setPlaylists] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [preferredFormat, setPreferredFormat] = useState('flac');
+    const [formatPreference, setFormatPreference] = useState(DEFAULT_FORMAT_ORDER);
     const [query, setQuery] = useState('');
+    const [manualPlaylist, setManualPlaylist] = useState('');
     const [allowLossy, setAllowLossy] = useState(true);
     const [trackLimit, setTrackLimit] = useState('');
     const navigate = useNavigate();
@@ -18,6 +46,32 @@ export default function Dashboard() {
     useEffect(() => {
         checkAuth();
     }, []);
+
+    useEffect(() => {
+        try {
+            const storedPref = localStorage.getItem('soulmate.formatPreference');
+            if (storedPref) {
+                const parsed = JSON.parse(storedPref);
+                if (Array.isArray(parsed)) {
+                    setFormatPreference(sanitizePreference(parsed));
+                }
+            }
+            const storedLossy = localStorage.getItem('soulmate.allowLossy');
+            if (storedLossy !== null) {
+                setAllowLossy(storedLossy === 'true');
+            }
+        } catch (err) {
+            console.warn('No pudimos leer preferencias guardadas', err);
+        }
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem('soulmate.formatPreference', JSON.stringify(formatPreference));
+    }, [formatPreference]);
+
+    useEffect(() => {
+        localStorage.setItem('soulmate.allowLossy', allowLossy ? 'true' : 'false');
+    }, [allowLossy]);
 
     const checkAuth = () => {
         if (!isAuthenticated()) {
@@ -41,6 +95,25 @@ export default function Dashboard() {
         }
     };
 
+    const moveFormat = (fmt, direction) => {
+        setFormatPreference((prev) => {
+            const idx = prev.indexOf(fmt);
+            const target = idx + direction;
+            if (idx === -1 || target < 0 || target >= prev.length) return prev;
+            const next = [...prev];
+            [next[idx], next[target]] = [next[target], next[idx]];
+            return next;
+        });
+    };
+
+    const resetPreference = () => setFormatPreference(DEFAULT_FORMAT_ORDER);
+
+    const effectivePreference = allowLossy ? formatPreference : formatPreference.filter((fmt) => fmt !== 'lossy');
+    const preferenceSummary = effectivePreference
+        .map((fmt) => FORMAT_LABELS[fmt] || fmt.toUpperCase())
+        .join(' → ') || 'AIFF → FLAC → WAV';
+    const primaryFormat = effectivePreference.find((fmt) => fmt !== 'lossy') || 'aiff';
+
     const startDownload = async (id) => {
         try {
             const tokenInfo = getToken();
@@ -48,7 +121,7 @@ export default function Dashboard() {
             const res = await axios.post('/api/download', {
                 playlist_id: id,
                 token_info: tokenInfo,
-                preferred_format: preferredFormat,
+                format_preferences: effectivePreference,
                 allow_lossy_fallback: allowLossy,
                 track_limit: parsedLimit,
             });
@@ -61,6 +134,14 @@ export default function Dashboard() {
                 alert("Failed to start download. Check server logs.");
             }
         }
+    };
+
+    const startDownloadManual = () => {
+        if (!manualPlaylist.trim()) {
+            alert("Pega una URL o ID de playlist de Spotify.");
+            return;
+        }
+        startDownload(manualPlaylist.trim());
     };
 
     const handleLogout = () => {
@@ -108,7 +189,7 @@ export default function Dashboard() {
                 <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
                     <div className="chip-row">
                         <span className="pill"><Zap size={15} /> Descarga rápida</span>
-                        <span className="pill"><Settings size={15} /> {preferredFormat.toUpperCase()} preferido</span>
+                        <span className="pill"><Settings size={15} /> Pref: {preferenceSummary}</span>
                     </div>
                     <button className="btn btn-ghost" onClick={handleLogout}>
                         <LogOut size={16} /> Logout
@@ -121,7 +202,7 @@ export default function Dashboard() {
                     <div className="eyebrow">Biblioteca lista para bajar</div>
                     <h1>Convierte playlists en descargas lossless, sin esfuerzo.</h1>
                     <p className="muted">
-                        Filtra, selecciona formato y dispara la cola. Guardamos tus preferencias locales para que solo pulses descargar.
+                        Filtra, define el orden de formatos y dispara la cola. Guardamos tus preferencias locales para que solo pulses descargar.
                     </p>
 
                     <div className="hero-actions">
@@ -165,16 +246,60 @@ export default function Dashboard() {
 
                     <div className="settings-grid">
                         <div>
-                            <div className="field-label">Formato preferido</div>
-                            <select
-                                value={preferredFormat}
-                                onChange={(e) => setPreferredFormat(e.target.value)}
-                                className="select"
-                            >
-                                <option value="flac">FLAC</option>
-                                <option value="wav">WAV</option>
-                                <option value="aiff">AIFF</option>
-                            </select>
+                            <div className="field-label">Orden de preferencia</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                                {formatPreference.map((fmt, idx) => {
+                                    const disabled = fmt === 'lossy' && !allowLossy;
+                                    return (
+                                        <div
+                                            key={fmt}
+                                            style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '0.55rem 0.75rem',
+                                                border: '1px solid var(--border, #e3e6ec)',
+                                                borderRadius: '12px',
+                                                background: 'var(--panel, #0f1623)',
+                                                opacity: disabled ? 0.55 : 1,
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                                                <span className="pill">#{idx + 1}</span>
+                                                <div>
+                                                    <div style={{ fontWeight: 600 }}>{FORMAT_LABELS[fmt]}</div>
+                                                    <div className="muted" style={{ fontSize: '0.85rem' }}>
+                                                        {FORMAT_DESCRIPTIONS[fmt]}{disabled ? ' · Omitido mientras el fallback está apagado.' : ''}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                                <button
+                                                    className="btn btn-ghost"
+                                                    style={{ padding: '0.35rem', borderRadius: '10px' }}
+                                                    onClick={() => moveFormat(fmt, -1)}
+                                                    disabled={idx === 0}
+                                                    aria-label={`Subir ${fmt}`}
+                                                >
+                                                    <ChevronUp size={16} />
+                                                </button>
+                                                <button
+                                                    className="btn btn-ghost"
+                                                    style={{ padding: '0.35rem', borderRadius: '10px' }}
+                                                    onClick={() => moveFormat(fmt, 1)}
+                                                    disabled={idx === formatPreference.length - 1}
+                                                    aria-label={`Bajar ${fmt}`}
+                                                >
+                                                    <ChevronDown size={16} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <button onClick={resetPreference} className="btn btn-ghost" style={{ marginTop: '0.4rem' }}>
+                                Reset orden
+                            </button>
                         </div>
 
                         <div>
@@ -187,6 +312,19 @@ export default function Dashboard() {
                                 value={trackLimit}
                                 onChange={(e) => setTrackLimit(e.target.value)}
                             />
+                        </div>
+                        <div>
+                            <div className="field-label">Descargar por URL/ID</div>
+                            <input
+                                type="text"
+                                className="input"
+                                placeholder="Pega URL o ID de playlist de Spotify"
+                                value={manualPlaylist}
+                                onChange={(e) => setManualPlaylist(e.target.value)}
+                            />
+                            <button onClick={startDownloadManual} className="btn btn-secondary" style={{ marginTop: '0.5rem' }}>
+                                <Download size={16} /> Descargar
+                            </button>
                         </div>
                     </div>
 
@@ -240,10 +378,10 @@ export default function Dashboard() {
                                 <div className="playlist-body">
                                     <div className="playlist-title">{pl.name}</div>
                                     <p className="muted" style={{ fontSize: '0.95rem' }}>
-                                        Descarga directa al formato {preferredFormat.toUpperCase()} con fallback inteligente.
+                                        Respeta tu orden: {preferenceSummary}{allowLossy ? '' : ' (sin fallback)'}.
                                     </p>
                                     <div className="playlist-meta">
-                                        <span className="chip"><Disc size={14} /> {preferredFormat.toUpperCase()}</span>
+                                        <span className="chip"><Disc size={14} /> {FORMAT_LABELS[primaryFormat] || primaryFormat.toUpperCase()}</span>
                                         <span className="chip">{allowLossy ? 'Fallback activo' : 'Solo lossless'}</span>
                                     </div>
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from colorama import Fore, Style
-from src.utils.formatting import basename_any, safe_filename, is_lossless_path
+from src.utils.formatting import basename_any, is_lossless_path, normalize_format_preference, safe_filename
 from src.utils.logging import setup_logger
 
 
@@ -32,7 +32,8 @@ class Downloader:
         slskd_download_dir: str,
         output_dir: str,
         max_retries: int = 3,
-        preferred_ext: str = "wav",
+        preferred_ext: Optional[str] = None,
+        format_preferences: Optional[List[str]] = None,
         allow_lossy_fallback: bool = False,
         dry_run: bool = False,
         concurrency: Optional[int] = None,
@@ -41,7 +42,13 @@ class Downloader:
         self.slskd_download_dir = slskd_download_dir
         self.output_dir = output_dir
         self.max_retries = max_retries
-        self.preferred_ext = preferred_ext
+        prefs = normalize_format_preference(format_preferences or preferred_ext)
+        if allow_lossy_fallback and "lossy" not in prefs:
+            prefs = prefs + ["lossy"]
+        if not allow_lossy_fallback:
+            prefs = [p for p in prefs if p != "lossy"]
+        self.format_preferences = prefs
+        self.preferred_ext = self.format_preferences[0] if self.format_preferences else None
         self.allow_lossy_fallback = allow_lossy_fallback
         self.dry_run = dry_run
         # None = default to a safe parallelism (set below).
@@ -102,7 +109,7 @@ class Downloader:
             self._matrix_print(f" · Query: {q}", progress_callback)
             # Serialize searches to avoid slskd rate limits when running in parallel.
             with self._search_lock:
-                cands = self.slsk.search_lossless(q, preferred_ext=self.preferred_ext)
+                cands = self.slsk.search_lossless(q, format_preferences=self.format_preferences)
             self._matrix_print(f"   ↳ {len(cands)} hits", progress_callback)
             search_results.append({"query": q, "hits": len(cands), "lossless_only": True})
             for preview in cands[:5]:
@@ -122,7 +129,7 @@ class Downloader:
                 self._matrix_print(f" · Query (lossy ok): {q}", progress_callback)
                 with self._search_lock:
                     cands = self.slsk.search_lossless(
-                        q, preferred_ext=self.preferred_ext, lossless_only=False
+                        q, format_preferences=self.format_preferences, lossless_only=False
                     )
                 self._matrix_print(f"   ↳ {len(cands)} hits", progress_callback)
                 search_results.append({"query": q, "hits": len(cands), "lossless_only": False})

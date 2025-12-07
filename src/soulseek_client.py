@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import requests
 from tenacity import retry, stop_after_attempt, wait_fixed
@@ -12,7 +12,7 @@ try:
 except Exception as e:  # pragma: no cover - import-time error shown at runtime
     slskd_api = None  # type: ignore
 
-from src.utils.formatting import basename_any, is_lossless_path, preferred_ext_score
+from src.utils.formatting import basename_any, is_lossless_path, normalize_format_preference, preferred_ext_score
 
 
 @dataclass
@@ -45,13 +45,16 @@ class SoulseekClient:
         password: Optional[str] = None,
         verify_ssl: bool = True,
         timeout: Optional[float] = 30.0,
-        preferred_ext: str = "wav",
+        preferred_ext: Optional[str] = None,
+        format_preferences: Optional[Sequence[str]] = None,
     ) -> None:
         if slskd_api is None:
             raise RuntimeError(
                 "slskd-api is not installed. Please install it (`pip install slskd-api`) and ensure slskd is running."
             )
-        self.preferred_ext = preferred_ext
+        prefs = format_preferences or preferred_ext
+        self.format_preferences = normalize_format_preference(prefs)
+        self.preferred_ext = self.format_preferences[0] if self.format_preferences else "wav"
         # Keep searches reasonable and avoid slskd rate limits.
         self._min_search_interval = 0.8  # seconds between calls to avoid slskd rate limit
         self._last_search_time = 0.0
@@ -64,7 +67,7 @@ class SoulseekClient:
             timeout=timeout,
         )
 
-    def _normalize_resp(self, r: Dict[str, Any], preferred_ext: str) -> Candidate:
+    def _normalize_resp(self, r: Dict[str, Any], format_preferences: Sequence[str]) -> Candidate:
         """Map a raw slskd response dict to a Candidate with computed ext score."""
         username = r.get("username") or r.get("user") or ""
         filename = r.get("filename") or r.get("file") or r.get("path") or ""
@@ -84,7 +87,7 @@ class SoulseekClient:
             username=username,
             filename=filename,
             size=size,
-            ext_score=preferred_ext_score(filename, preferred_ext),
+            ext_score=preferred_ext_score(filename, format_preferences),
             reported_speed=speed if speed is None else float(speed),
             peer_queue_len=qlen,
         )
@@ -97,10 +100,11 @@ class SoulseekClient:
         min_upload_speed_bps: int = 0,
         max_peer_queue: int = 1_000_000,
         preferred_ext: Optional[str] = None,
+        format_preferences: Optional[Sequence[str]] = None,
         lossless_only: bool = True,
     ) -> List[Candidate]:
         """Run a slskd text search and return candidates, best first."""
-        preferred = (preferred_ext or self.preferred_ext).lower()
+        preference = normalize_format_preference(format_preferences or preferred_ext or self.format_preferences)
         now = time.time()
         wait_for = self._min_search_interval - (now - self._last_search_time)
         if wait_for > 0:
@@ -199,7 +203,7 @@ class SoulseekClient:
                     continue
                 if lossless_only and not is_lossless_path(fname):
                     continue
-                cand = self._normalize_resp(f, preferred)
+                cand = self._normalize_resp(f, preference)
                 key = (cand.username, cand.filename)
                 if key in seen:
                     continue
