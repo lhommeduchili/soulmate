@@ -4,7 +4,6 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import JobView from './pages/JobView';
 import Candidates from './pages/Candidates';
-import { setToken } from './utils/auth';
 import './index.css';
 
 // Component to handle auth callback logic
@@ -17,21 +16,8 @@ function AuthHandler({ children }) {
         const authData = params.get('auth_data');
 
         if (authData) {
-            try {
-                // Decode base64 (account for "+" getting turned into spaces)
-                const normalized = authData.replace(/ /g, '+');
-                const jsonStr = atob(normalized);
-                const tokenInfo = JSON.parse(jsonStr);
-
-                // Save to local storage
-                setToken(tokenInfo);
-                console.log("Token saved successfully");
-
-                // Clear URL and redirect to dashboard (root)
-                navigate('/', { replace: true });
-            } catch (e) {
-                console.error("Failed to parse auth data", e);
-            }
+            // Legacy param cleanup; backend now sets an HTTP-only cookie.
+            navigate('/', { replace: true });
         }
     }, [location, navigate]);
 

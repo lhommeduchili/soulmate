@@ -63,7 +63,9 @@ export default function JobView() {
             }
         } catch (err) {
             console.error(err);
-            if (err.response && err.response.status === 404) {
+            if (err.response && err.response.status === 401) {
+                navigate('/login');
+            } else if (err.response && err.response.status === 404) {
                 setJobError('Job not found or expired.');
                 if (intervalRef.current) clearInterval(intervalRef.current);
             }
@@ -76,6 +78,9 @@ export default function JobView() {
             setFiles(res.data.files || []);
         } catch (err) {
             console.error('Failed to fetch files', err);
+            if (err.response && err.response.status === 401) {
+                navigate('/login');
+            }
         }
     };
 
@@ -147,7 +152,9 @@ export default function JobView() {
             }
         }
         removeToken();
-        window.location.href = '/login';
+        axios.post('/api/auth/logout').finally(() => {
+            window.location.href = '/login';
+        });
     };
 
     const handleCopyLogs = async () => {

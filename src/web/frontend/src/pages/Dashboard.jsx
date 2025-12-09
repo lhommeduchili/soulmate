@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Disc, Download, Search, X, Settings, Music, Zap, ListMusic, LogOut, ChevronUp, ChevronDown } from 'lucide-react';
 
-import { isAuthenticated, getToken, removeToken } from '../utils/auth';
+import { removeToken } from '../utils/auth';
 
 const DEFAULT_FORMAT_ORDER = ['aiff', 'flac', 'wav', 'lossy'];
 const FORMAT_LABELS = {
@@ -74,10 +74,6 @@ export default function Dashboard() {
     }, [allowLossy]);
 
     const checkAuth = () => {
-        if (!isAuthenticated()) {
-            navigate('/login');
-            return;
-        }
         fetchPlaylists();
     };
 
@@ -116,11 +112,9 @@ export default function Dashboard() {
 
     const startDownload = async (id) => {
         try {
-            const tokenInfo = getToken();
             const parsedLimit = trackLimit ? parseInt(trackLimit, 10) : null;
             const res = await axios.post('/api/download', {
                 playlist_id: id,
-                token_info: tokenInfo,
                 format_preferences: effectivePreference,
                 allow_lossy_fallback: allowLossy,
                 track_limit: parsedLimit,
@@ -146,7 +140,9 @@ export default function Dashboard() {
 
     const handleLogout = () => {
         removeToken();
-        navigate('/login');
+        axios.post('/api/auth/logout').finally(() => {
+            navigate('/login');
+        });
     };
 
     const inspectPlaylist = (id) => {

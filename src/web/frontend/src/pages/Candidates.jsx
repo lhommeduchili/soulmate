@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import { Download, ChevronDown, ChevronUp } from 'lucide-react';
@@ -18,6 +18,7 @@ function formatSize(bytes) {
 
 export default function Candidates() {
   const { playlistId } = useParams();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState({});
@@ -34,6 +35,10 @@ export default function Candidates() {
       setData(res.data);
     } catch (e) {
       console.error(e);
+      if (e.response && e.response.status === 401) {
+        navigate('/login');
+        return;
+      }
       setMessage('No pudimos obtener los candidatos');
     } finally {
       setLoading(false);
@@ -57,6 +62,10 @@ export default function Candidates() {
       setMessage(`Descargado: ${track.artist} - ${track.title}`);
     } catch (e) {
       console.error(e);
+      if (e.response && e.response.status === 401) {
+        navigate('/login');
+        return;
+      }
       setMessage(`Error: ${e.response?.data?.detail || e.message}`);
     } finally {
       setDownloading(null);

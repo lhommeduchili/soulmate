@@ -2,10 +2,16 @@ import React from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import { Music, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
+import { ensureBasicAuth } from '../utils/auth';
 
 export default function Login() {
     const handleLogin = async () => {
         try {
+            const creds = ensureBasicAuth();
+            if (creds === null) {
+                alert("Se requieren credenciales básicas para acceder.");
+                return;
+            }
             const res = await axios.get('/api/auth/login');
             if (res.data.url) {
                 window.location.href = res.data.url;

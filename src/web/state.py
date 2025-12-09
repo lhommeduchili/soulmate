@@ -20,6 +20,9 @@ class JobState:
     served_files: set = field(default_factory=set)  # files already handed off to client
     current_download_percent: float = 0.0
     current_download_state: str = ""
+    owner_id: str = ""
+    owner_name: str = ""
+    completed_at: float = 0.0
 
 # Global in-memory store
 JOBS: Dict[str, JobState] = {}

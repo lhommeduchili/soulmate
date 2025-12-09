@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import threading
+import time
 import uuid
 from typing import Any, List, Optional, Tuple
 
@@ -11,6 +12,8 @@ from src.soulseek_client import SoulseekClient
 from src.downloader import Downloader
 from src.web.state import JOBS, JobState
 from src.utils.formatting import DEFAULT_FORMAT_PREFERENCE, normalize_format_preference
+
+CLEANUP_AFTER_SECONDS = 5 * 60 * 60  # 5 hours
 
 def start_download_job(
     token_info: dict,
@@ -21,6 +24,8 @@ def start_download_job(
     format_preferences: Optional[List[str]] = None,
     allow_lossy_fallback: bool = True,
     track_limit: Optional[int] = None,
+    owner_id: Optional[str] = None,
+    owner_name: Optional[str] = None,
 ) -> str:
     """Bootstrap a background download job and return its job_id."""
     job_id = str(uuid.uuid4())
@@ -35,6 +40,8 @@ def start_download_job(
         current_track_name="",
         ok_count=0,
         fail_count=0,
+        owner_id=owner_id or "",
+        owner_name=owner_name or "",
     )
 
     # Run in a separate thread
@@ -50,6 +57,8 @@ def start_download_job(
             format_preferences,
             allow_lossy_fallback,
             track_limit,
+            owner_id,
+            owner_name,
         ),
         daemon=True
     )
@@ -67,6 +76,8 @@ def _download_worker(
     format_preferences: Optional[List[str]],
     allow_lossy_fallback: bool,
     track_limit: Optional[int],
+    owner_id: Optional[str],
+    owner_name: Optional[str],
 ):
     """Background thread: fetch playlist, search on slskd, download, zip, update JOBS."""
     job = JOBS[job_id]
@@ -197,15 +208,25 @@ def _download_worker(
         job.files = sorted(collected)
         job.result_path = output_dir
         job.status = "completed"
+        job.completed_at = time.time()
+        _schedule_cleanup(job_id, output_root, output_dir)
         
     except Exception as e:
         if str(e) == "Job cancelled":
             job.status = "cancelled"
             job.logs.append("Job cancelled.")
+            job.completed_at = time.time()
         else:
             job.status = "failed"
             job.logs.append(f"Error: {str(e)}")
             print(f"Job {job_id} failed: {e}")
+            job.completed_at = time.time()
+        try:
+            output_root = os.getenv("OUTPUT_ROOT", "downloads")
+            output_dir = os.path.join(output_root, job_id)
+            _schedule_cleanup(job_id, output_root, output_dir)
+        except Exception:
+            pass
 
 
 def _build_spotify_client(token_info: dict) -> Tuple[SpotifyClient, dict]:
@@ -237,6 +258,25 @@ def _build_spotify_client(token_info: dict) -> Tuple[SpotifyClient, dict]:
 
     client = SpotifyClient(access_token=refreshed["access_token"])
     return client, refreshed
+
+
+def _schedule_cleanup(job_id: str, output_root: str, output_dir: str) -> None:
+    """Schedule deletion of job files after CLEANUP_AFTER_SECONDS."""
+    def _cleanup():
+        try:
+            if os.path.exists(output_dir):
+                shutil.rmtree(output_dir, ignore_errors=True)
+            job = JOBS.get(job_id)
+            if job:
+                job.files = []
+                job.pending_files = []
+                job.served_files = set()
+        except Exception:
+            pass
+
+    t = threading.Timer(CLEANUP_AFTER_SECONDS, _cleanup)
+    t.daemon = True
+    t.start()
 
 def _zip_directory(folder_path, zip_path):
     """Zip a whole folder preserving relative paths."""

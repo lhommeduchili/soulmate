@@ -32,4 +32,6 @@ services:
       - ./slskd_local/config/slskd.yml:/app/slskd.yml
       # Persist downloads
       - ./slskd_local/downloads:/app/downloads
+      # Persist databases/events
+      - ./slskd_local/data:/app/data
     restart: unless-stopped
