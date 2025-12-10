@@ -14,6 +14,7 @@ from src.web.state import JOBS, JobState
 from src.utils.formatting import DEFAULT_FORMAT_PREFERENCE, normalize_format_preference
 
 CLEANUP_AFTER_SECONDS = 5 * 60 * 60  # 5 hours
+MAX_TRACKS_PER_JOB = 50
 
 def start_download_job(
     token_info: dict,
@@ -28,6 +29,8 @@ def start_download_job(
     owner_name: Optional[str] = None,
 ) -> str:
     """Bootstrap a background download job and return its job_id."""
+    if track_limit is None or track_limit <= 0 or track_limit > MAX_TRACKS_PER_JOB:
+        track_limit = MAX_TRACKS_PER_JOB
     job_id = str(uuid.uuid4())
     
     # Initialize job state
@@ -118,7 +121,7 @@ def _download_worker(
             slsk=slsk_client,
             slskd_download_dir=slskd_download_dir,
             output_dir=output_dir,
-            max_retries=3,
+            max_retries=4,
             preferred_ext=None,
             format_preferences=prefs,
             allow_lossy_fallback=allow_lossy_fallback,
@@ -154,22 +157,16 @@ def _download_worker(
                             "search_results": data.get("search_results") or [],
                         }
                     )
-                # Update file list incrementally
-                collected = []
-                for root, _, files in os.walk(output_dir):
-                    for file in files:
-                        abs_path = os.path.join(root, file)
-                        rel_path = os.path.relpath(abs_path, output_root)
-                        collected.append(rel_path)
-                job.files = sorted(collected)
-                existing_served = set(job.served_files) if hasattr(job, "served_files") else set()
-                pending_set = set(job.pending_files) if hasattr(job, "pending_files") else set()
-                current_set = set(collected)
-                new_files = current_set - existing_served - pending_set
-                if new_files:
-                    pending = list(pending_set | new_files)
-                    pending.sort()
-                    job.pending_files = pending
+                new_path = data.get("path")
+                if new_path and os.path.exists(new_path):
+                    rel_path = os.path.relpath(new_path, output_root)
+                    if rel_path not in job.files:
+                        job.files.append(rel_path)
+                        job.files.sort()
+                    if rel_path not in getattr(job, "served_files", set()) and rel_path not in getattr(job, "pending_files", []):
+                        pending = set(job.pending_files or [])
+                        pending.add(rel_path)
+                        job.pending_files = sorted(pending)
             elif type_ == "done":
                 job.ok_count = data["ok"]
                 job.fail_count = data["fail"]
@@ -271,6 +268,7 @@ def _schedule_cleanup(job_id: str, output_root: str, output_dir: str) -> None:
                 job.files = []
                 job.pending_files = []
                 job.served_files = set()
+                JOBS.pop(job_id, None)
         except Exception:
             pass
 

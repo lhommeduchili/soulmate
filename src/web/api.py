@@ -1,4 +1,6 @@
 import os
+import secrets
+import time
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, Response
 from fastapi.responses import RedirectResponse, FileResponse
@@ -8,7 +10,6 @@ import tempfile
 import zipfile
 
 from src.web.state import JOBS
-from src.web.basic_auth import require_basic_auth
 from src.web.worker import start_download_job
 from src.spotify_client import Track, SpotifyClient
 from src.soulseek_client import SoulseekClient, Candidate
@@ -21,13 +22,17 @@ from src.web.session import (
     get_session,
     refresh_session_if_needed,
 )
+from src.web.supabase_auth import verify_request_user, user_id_from_payload
 
 ALLOWED_FORMATS = {"wav", "flac", "aiff", "alac", "lossy"}
 
-router = APIRouter(prefix="/api", dependencies=[Depends(require_basic_auth)])
+router = APIRouter(prefix="/api")
 
 def _active_job_count() -> int:
     return sum(1 for j in JOBS.values() if j.status in {"pending", "running", "paused"})
+
+_OAUTH_STATES: Dict[str, float] = {}
+_STATE_TTL_SECONDS = 300
 
 def get_spotify_oauth():
     return SpotifyOAuth(
@@ -38,32 +43,57 @@ def get_spotify_oauth():
         cache_handler=None # We handle token manually
     )
 
+def _create_oauth_state() -> str:
+    token = secrets.token_urlsafe(24)
+    _OAUTH_STATES[token] = time.time()
+    # prune old
+    stale_before = time.time() - _STATE_TTL_SECONDS
+    for k, v in list(_OAUTH_STATES.items()):
+        if v < stale_before:
+            _OAUTH_STATES.pop(k, None)
+    return token
+
+def _validate_oauth_state(state: Optional[str]) -> None:
+    if not state:
+        raise HTTPException(status_code=400, detail="Falta parámetro state en OAuth")
+    ts = _OAUTH_STATES.pop(state, None)
+    if ts is None or (time.time() - ts) > _STATE_TTL_SECONDS:
+        raise HTTPException(status_code=400, detail="Parámetro state inválido o expirado")
+
 def _require_session(request: Request) -> SessionData:
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
     session = get_session(session_id)
     return refresh_session_if_needed(session)
 
+def _require_user(request: Request) -> str:
+    payload = verify_request_user(request)
+    return user_id_from_payload(payload)
 
 @router.get("/auth/login")
 def login(request: Request):
+    _require_user(request)
     sp_oauth = get_spotify_oauth()
-    auth_url = sp_oauth.get_authorize_url()
+    state = _create_oauth_state()
+    auth_url = sp_oauth.get_authorize_url(state=state)
     return {"url": auth_url}
 
 @router.get("/auth/callback")
-def callback(request: Request, code: str):
+def callback(request: Request, code: str, state: Optional[str] = None):
     try:
+        _validate_oauth_state(state)
         sp_oauth = get_spotify_oauth()
         token_info = sp_oauth.get_access_token(code)
 
         session = create_session(token_info)
+        cookie_secure = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+        cookie_samesite = os.getenv("SESSION_SAMESITE", "lax")
         redirect = RedirectResponse(url="/", status_code=302)
         redirect.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=session.session_id,
             httponly=True,
-            secure=False,  # set to True when serving over HTTPS
-            samesite="lax",
+            secure=cookie_secure,
+            samesite=cookie_samesite,
         )
         return redirect
     except Exception as e:
@@ -81,11 +111,11 @@ def logout(request: Request):
 
 
 @router.get("/auth/me")
-def auth_me(session: SessionData = Depends(_require_session)):
-    return {"user_id": session.spotify_user_id, "display_name": session.display_name}
+def auth_me(session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
+    return {"user_id": session.spotify_user_id, "display_name": session.display_name, "app_user": user}
 
 @router.get("/playlists")
-def get_playlists(session: SessionData = Depends(_require_session)):
+def get_playlists(user: str = Depends(_require_user), session: SessionData = Depends(_require_session)):
     # Use the token to get playlists
     import spotipy
     token_info = refresh_session_if_needed(session).token_info
@@ -94,14 +124,19 @@ def get_playlists(session: SessionData = Depends(_require_session)):
     playlists = []
     try:
         results = sp.current_user_playlists(limit=50)
-        for item in results['items']:
-            if item: # Check if item is not None
-                playlists.append({
-                    "id": item['id'],
-                    "name": item['name'],
-                    "tracks": item['tracks']['total'],
-                    "image": item['images'][0]['url'] if item['images'] else None
-                })
+        while True:
+            for item in results['items']:
+                if item: # Check if item is not None
+                    playlists.append({
+                        "id": item['id'],
+                        "name": item['name'],
+                        "tracks": item['tracks']['total'],
+                        "image": item['images'][0]['url'] if item['images'] else None
+                    })
+            if results.get("next"):
+                results = sp.next(results)
+            else:
+                break
         return playlists
     except Exception as e:
         print(f"Error fetching playlists: {e}")
@@ -137,7 +172,7 @@ class DownloadCandidateRequest(BaseModel):
     candidate: CandidateOut
 
 @router.post("/download")
-def start_download(req: DownloadRequest, session: SessionData = Depends(_require_session)):
+def start_download(req: DownloadRequest, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
     from src.web.state import MAX_CONCURRENT_JOBS
 
     if _active_job_count() >= MAX_CONCURRENT_JOBS:
@@ -162,6 +197,8 @@ def start_download(req: DownloadRequest, session: SessionData = Depends(_require
     track_limit = req.track_limit
     if track_limit is not None and track_limit <= 0:
         track_limit = None
+    if track_limit is None or track_limit > 50:
+        track_limit = 50
     
     slskd_host = os.getenv("SLSKD_HOST")
     slskd_api_key = os.getenv("SLSKD_API_KEY")
@@ -203,11 +240,17 @@ def _get_owned_job(job_id: str, session: SessionData) -> Any:
     return job
 
 @router.get("/playlists/{playlist_id}/candidates")
-def get_candidates(playlist_id: str, session: SessionData = Depends(_require_session), limit_per_track: int = 5):
+def get_candidates(
+    playlist_id: str,
+    session: SessionData = Depends(_require_session),
+    user: str = Depends(_require_user),
+    limit_per_track: int = 5,
+):
     """Return top candidates per track (preview) without downloading."""
     token_info = refresh_session_if_needed(session).token_info
     sp_client = SpotifyClient(access_token=token_info["access_token"])
     playlist_name, tracks = sp_client.get_playlist(playlist_id)
+    tracks = tracks[:50]
 
     slskd_host = os.getenv("SLSKD_HOST")
     slskd_api_key = os.getenv("SLSKD_API_KEY")
@@ -240,7 +283,12 @@ def get_candidates(playlist_id: str, session: SessionData = Depends(_require_ses
     return {"playlist_name": playlist_name, "tracks": result}
 
 @router.post("/download_candidate")
-def download_candidate(req: DownloadCandidateRequest, session: SessionData = Depends(_require_session)):
+def download_candidate(
+    req: DownloadCandidateRequest,
+    background_tasks: BackgroundTasks,
+    session: SessionData = Depends(_require_session),
+    user: str = Depends(_require_user),
+):
     """Download a specific candidate selected by the user."""
     slskd_host = os.getenv("SLSKD_HOST")
     slskd_api_key = os.getenv("SLSKD_API_KEY")
@@ -273,7 +321,7 @@ def download_candidate(req: DownloadCandidateRequest, session: SessionData = Dep
     ok, meta = slsk_client.wait_for_completion(
         cand.username,
         base_remote,
-        timeout_s=1800.0,
+        timeout_s=900.0,
         file_finder=locate_download,
     )
     src_guess = locate_download()
@@ -293,29 +341,45 @@ def download_candidate(req: DownloadCandidateRequest, session: SessionData = Dep
         shutil.copy2(src_guess, dst_path)
         os.remove(src_guess)
 
-    return {"path": dst_path, "state": meta.get("state") if meta else "complete"}
+    def _cleanup():
+        try:
+            if os.path.exists(dst_path):
+                os.remove(dst_path)
+            dir_path = os.path.dirname(dst_path)
+            while dir_path.startswith(os.path.abspath(output_root)):
+                if not os.listdir(dir_path):
+                    os.rmdir(dir_path)
+                    dir_path = os.path.dirname(dir_path)
+                else:
+                    break
+        except Exception:
+            pass
+
+    background_tasks.add_task(_cleanup)
+    filename = os.path.basename(dst_path)
+    return FileResponse(dst_path, media_type="application/octet-stream", filename=filename, background=background_tasks)
 
 @router.get("/jobs/{job_id}")
-def get_job(job_id: str, session: SessionData = Depends(_require_session)):
+def get_job(job_id: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
     job = _get_owned_job(job_id, session)
     payload = job.__dict__.copy()
     payload["pending_count"] = len(getattr(job, "pending_files", []) or [])
     return payload
 
 @router.get("/jobs/{job_id}/download")
-def download_job_result(job_id: str, session: SessionData = Depends(_require_session)):
+def download_job_result(job_id: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
     _get_owned_job(job_id, session)
     raise HTTPException(status_code=400, detail="Direct downloads only; access files under /downloads/")
 
 
 @router.get("/jobs/{job_id}/files")
-def list_job_files(job_id: str, session: SessionData = Depends(_require_session)):
+def list_job_files(job_id: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
     job = _get_owned_job(job_id, session)
     return {"files": job.files}
 
 
 @router.get("/jobs/{job_id}/files/{file_path:path}")
-def download_job_file(job_id: str, file_path: str, session: SessionData = Depends(_require_session)):
+def download_job_file(job_id: str, file_path: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
     job = _get_owned_job(job_id, session)
     if job.status != "completed":
         raise HTTPException(status_code=400, detail="Job not ready")
@@ -332,7 +396,12 @@ def download_job_file(job_id: str, file_path: str, session: SessionData = Depend
 
 
 @router.get("/jobs/{job_id}/next_file")
-def stream_next_file(job_id: str, background_tasks: BackgroundTasks, session: SessionData = Depends(_require_session)):
+def stream_next_file(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    session: SessionData = Depends(_require_session),
+    user: str = Depends(_require_user),
+):
     """Serve the next pending file for this job and delete it on the server after sending."""
     job = _get_owned_job(job_id, session)
     pending = getattr(job, "pending_files", [])
@@ -384,6 +453,7 @@ def download_job_file_by_index(
     index: int,
     background_tasks: BackgroundTasks,
     session: SessionData = Depends(_require_session),
+    user: str = Depends(_require_user),
 ):
     """Download a file by its index in the job.files list to avoid path encoding issues."""
     job = _get_owned_job(job_id, session)
@@ -397,7 +467,10 @@ def download_job_file_by_index(
 
     output_root = os.getenv("OUTPUT_ROOT", "downloads")
     full_path = os.path.abspath(os.path.join(output_root, rel_path))
+    safe_root = os.path.abspath(output_root)
     
+    if not full_path.startswith(safe_root):
+        raise HTTPException(status_code=400, detail="Invalid file path")
     if not os.path.exists(full_path):
         raise HTTPException(status_code=404, detail="File not found on disk")
 
@@ -428,7 +501,7 @@ def download_job_file_by_index(
 
 
 @router.post("/jobs/{job_id}/pause")
-def pause_job(job_id: str, session: SessionData = Depends(_require_session)):
+def pause_job(job_id: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
     job = _get_owned_job(job_id, session)
     if job.status == "running":
         job.status = "paused"
@@ -436,7 +509,7 @@ def pause_job(job_id: str, session: SessionData = Depends(_require_session)):
     return {"status": job.status}
 
 @router.post("/jobs/{job_id}/resume")
-def resume_job(job_id: str, session: SessionData = Depends(_require_session)):
+def resume_job(job_id: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
     job = _get_owned_job(job_id, session)
     if job.status == "paused":
         job.status = "running"
@@ -444,7 +517,7 @@ def resume_job(job_id: str, session: SessionData = Depends(_require_session)):
     return {"status": job.status}
 
 @router.post("/jobs/{job_id}/cancel")
-def cancel_job(job_id: str, session: SessionData = Depends(_require_session)):
+def cancel_job(job_id: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
     """Cancel a job and remove its downloaded files on the server."""
     job = _get_owned_job(job_id, session)
     job.status = "cancelled"
@@ -459,7 +532,13 @@ def cancel_job(job_id: str, session: SessionData = Depends(_require_session)):
     return {"status": job.status}
 
 @router.get("/jobs/{job_id}/archive")
-def download_job_archive(job_id: str, background_tasks: BackgroundTasks, indices: Optional[str] = None, session: SessionData = Depends(_require_session)):
+def download_job_archive(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    indices: Optional[str] = None,
+    session: SessionData = Depends(_require_session),
+    user: str = Depends(_require_user),
+):
     """Bundle files into a zip. If indices is provided (comma-separated), only zip those files."""
     job = _get_owned_job(job_id, session)
     

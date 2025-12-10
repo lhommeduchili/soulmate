@@ -53,13 +53,25 @@ export default function Candidates() {
     setDownloading(`${track.title}-${cand.filename}`);
     setMessage('');
     try {
-      await axios.post('/api/download_candidate', {
+      const res = await axios.post('/api/download_candidate', {
         playlist_id: playlistId,
         playlist_name: data.playlist_name,
         track,
         candidate: cand,
-      });
-      setMessage(`Descargado: ${track.artist} - ${track.title}`);
+      }, { responseType: 'blob' });
+      const disposition = res.headers['content-disposition'] || '';
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const filename = match ? match[1] : `${track.artist} - ${track.title}`;
+      const blob = new Blob([res.data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setMessage(`Descargado: ${filename}`);
     } catch (e) {
       console.error(e);
       if (e.response && e.response.status === 401) {
@@ -92,7 +104,10 @@ export default function Candidates() {
     <div className="container">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
         <Link to="/" className="btn btn-ghost">← Volver</Link>
-        <span className="pill">{data.tracks.length} tracks</span>
+        <div className="chip-row" style={{ gap: '0.5rem', alignItems: 'center' }}>
+          <span className="pill">{data.tracks.length} tracks</span>
+          <span className="pill" style={{ background: 'rgba(255,255,255,0.04)' }}>Vista previa limitada a 50 temas</span>
+        </div>
       </div>
 
       <div className="surface surface-borderless">

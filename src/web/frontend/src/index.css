@@ -18,6 +18,10 @@
   --radius-xl: 22px;
   --shadow-soft: 0 18px 80px rgba(0, 0, 0, 0.35);
   --shadow-accent: 0 20px 90px rgba(125, 251, 211, 0.14);
+  --content-max: 1180px;
+  --section-gap: 1.35rem;
+  --grid-gap: 1.1rem;
+  --surface-padding: clamp(1.1rem, 1.6vw, 1.85rem);
 }
 
 * {
@@ -64,9 +68,10 @@ a {
 }
 
 .container {
-  max-width: 1320px;
+  max-width: var(--content-max);
+  width: 100%;
   margin: 0 auto;
-  padding: 2.5rem clamp(1.25rem, 2vw, 2rem) 3rem;
+  padding: clamp(1.9rem, 2vw + 1rem, 2.8rem) clamp(1.25rem, 2vw, 2rem) 3rem;
   position: relative;
   z-index: 1;
 }
@@ -75,8 +80,8 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
+  gap: 1.25rem;
+  margin-bottom: var(--section-gap);
 }
 
 .brand {
@@ -229,7 +234,7 @@ p {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  padding: clamp(1.2rem, 2vw, 1.8rem);
+  padding: var(--surface-padding);
   box-shadow: var(--shadow-soft);
   position: relative;
   overflow: hidden;
@@ -260,8 +265,8 @@ p {
 
 .grid-two {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: var(--grid-gap);
 }
 
 .panel-title {
@@ -269,7 +274,8 @@ p {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.9rem;
+  flex-wrap: wrap;
 }
 
 .field-label {
@@ -422,11 +428,25 @@ p {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.95fr);
+  gap: var(--grid-gap);
+  align-items: stretch;
+}
+
 .hero {
   display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 1.5rem;
-  margin-bottom: 1.5rem;
+  grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
+  gap: var(--grid-gap);
+  margin-bottom: var(--section-gap);
+  align-items: stretch;
+}
+
+.hero-copy {
+  display: grid;
+  gap: 0.8rem;
+  max-width: 640px;
 }
 
 .hero-copy h1 {
@@ -462,14 +482,14 @@ p {
 
 .settings-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--grid-gap);
 }
 
 .playlist-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--grid-gap);
 }
 
 .playlist-card {
@@ -481,12 +501,12 @@ p {
   box-shadow: var(--shadow-soft);
   display: flex;
   flex-direction: column;
-  min-height: 260px;
+  min-height: 320px;
 }
 
 .playlist-cover {
   position: relative;
-  height: 150px;
+  aspect-ratio: 1 / 1;
   background: linear-gradient(135deg, rgba(125, 251, 211, 0.16), rgba(255, 212, 121, 0.08));
   overflow: hidden;
 }
@@ -573,7 +593,7 @@ table {
 
 th,
 td {
-  padding: 0.9rem 1rem;
+  padding: 0.85rem 0.95rem;
   text-align: left;
 }
 
@@ -594,7 +614,7 @@ tr + tr td {
   border-radius: 14px;
   border: 1px solid var(--border);
   padding: 0.85rem;
-  height: 320px;
+  height: 360px;
   overflow-y: auto;
   font-size: 0.92rem;
 }
@@ -713,6 +733,12 @@ tr + tr td {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+@media (max-width: 960px) {
+  .two-col {
+    grid-template-columns: 1fr;
   }
 }
 

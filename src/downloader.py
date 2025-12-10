@@ -145,6 +145,7 @@ class Downloader:
                 self._matrix_print(f" ! {msg}", progress_callback)
                 return DownloadOutcome(track, False, msg, queries=queries, candidates=[], search_results=search_results)
         # Try best -> worst, honour max_retries (per-track)
+        candidates.sort(key=lambda c: c.score(), reverse=True)
         tried = 0
         tried_labels: List[str] = []
         for cand in candidates:
@@ -219,6 +220,11 @@ class Downloader:
                 self.logger.info("Accepting lossy download because fallback is enabled")
             final_name = safe_filename(f"{track.artist} - {track.title}{final_ext}")
             dst_path = os.path.join(self.output_dir, final_name)
+            counter = 2
+            while os.path.exists(dst_path):
+                alt_name = safe_filename(f"{track.artist} - {track.title} ({counter}){final_ext}")
+                dst_path = os.path.join(self.output_dir, alt_name)
+                counter += 1
             os.makedirs(self.output_dir, exist_ok=True)
             try:
                 shutil.move(src_guess, dst_path)
@@ -277,6 +283,7 @@ class Downloader:
                     "queries": outcome.queries or [],
                     "candidates": outcome.candidates or [],
                     "search_results": outcome.search_results or [],
+                    "path": outcome.path,
                 },
             )
 

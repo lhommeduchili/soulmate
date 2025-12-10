@@ -115,7 +115,7 @@ class SoulseekClient:
         results: List[Dict[str, Any]] = []
         sid: Optional[str] = None
         token: Optional[int] = None
-        max_attempts = 1
+        max_attempts = 3
         while attempts < max_attempts:
             attempts += 1
             try:
@@ -179,7 +179,9 @@ class SoulseekClient:
                 break
             # If no results at all, don't keep retrying endlessly; break early.
             if not results:
-                break
+                # brief backoff before next attempt
+                time.sleep(1.0 * attempts)
+                continue
 
         if not sid or not results:
             return []
@@ -226,7 +228,7 @@ class SoulseekClient:
         self,
         user: str,
         target_basename: str,
-        timeout_s: float = 90.0,
+        timeout_s: float = 180.0,
         poll_s: float = 2.0,
         progress_cb=None,
         file_finder: Optional[Callable[[], Optional[str]]] = None,

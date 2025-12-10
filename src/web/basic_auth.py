@@ -9,7 +9,10 @@ def require_basic_auth(request: Request):
     user = os.getenv("BASIC_AUTH_USER")
     password = os.getenv("BASIC_AUTH_PASS")
     if not user or not password:
-        return
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Basic auth no configurado en el servidor (BASIC_AUTH_USER/BASIC_AUTH_PASS)",
+        )
 
     auth_header = request.headers.get("authorization")
     if not auth_header or not auth_header.lower().startswith("basic "):

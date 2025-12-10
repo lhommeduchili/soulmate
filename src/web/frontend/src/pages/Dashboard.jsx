@@ -7,6 +7,7 @@ import { Disc, Download, Search, X, Settings, Music, Zap, ListMusic, LogOut, Che
 import { removeToken } from '../utils/auth';
 
 const DEFAULT_FORMAT_ORDER = ['aiff', 'flac', 'wav', 'lossy'];
+const MAX_TRACKS_PER_JOB = 50;
 const FORMAT_LABELS = {
     aiff: 'AIFF',
     flac: 'FLAC',
@@ -41,6 +42,7 @@ export default function Dashboard() {
     const [manualPlaylist, setManualPlaylist] = useState('');
     const [allowLossy, setAllowLossy] = useState(true);
     const [trackLimit, setTrackLimit] = useState('');
+    const [showFormatModal, setShowFormatModal] = useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -110,6 +112,14 @@ export default function Dashboard() {
         .join(' → ') || 'AIFF → FLAC → WAV';
     const primaryFormat = effectivePreference.find((fmt) => fmt !== 'lossy') || 'aiff';
 
+    useEffect(() => {
+        const onKey = (e) => {
+            if (e.key === 'Escape') setShowFormatModal(false);
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
+
     const startDownload = async (id) => {
         try {
             const parsedLimit = trackLimit ? parseInt(trackLimit, 10) : null;
@@ -173,6 +183,7 @@ export default function Dashboard() {
     }
 
     return (
+        <>
         <div className="container">
             <header className="page-header">
                 <div className="brand">
@@ -214,6 +225,10 @@ export default function Dashboard() {
                             <small>Fallback</small>
                             <strong>{allowLossy ? 'Permitido' : 'Solo lossless'}</strong>
                         </div>
+                        <div className="stat-card">
+                            <small>Límite por job</small>
+                            <strong>{MAX_TRACKS_PER_JOB} tracks</strong>
+                        </div>
                     </div>
 
                     <div className="search">
@@ -237,65 +252,24 @@ export default function Dashboard() {
                             <p className="muted" style={{ marginBottom: '6px' }}>Preferencias de descarga</p>
                             <h2>Formato y límites</h2>
                         </div>
-                        <span className="pill"><Settings size={15} /> Ajustes locales</span>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span className="pill"><Settings size={15} /> Ajustes locales</span>
+                            <span className="pill" style={{ background: 'rgba(255,255,255,0.04)' }}>Máximo {MAX_TRACKS_PER_JOB} temas por descarga</span>
+                        </div>
                     </div>
 
                     <div className="settings-grid">
-                        <div>
-                            <div className="field-label">Orden de preferencia</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                                {formatPreference.map((fmt, idx) => {
-                                    const disabled = fmt === 'lossy' && !allowLossy;
-                                    return (
-                                        <div
-                                            key={fmt}
-                                            style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '0.55rem 0.75rem',
-                                                border: '1px solid var(--border, #e3e6ec)',
-                                                borderRadius: '12px',
-                                                background: 'var(--panel, #0f1623)',
-                                                opacity: disabled ? 0.55 : 1,
-                                            }}
-                                        >
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                                                <span className="pill">#{idx + 1}</span>
-                                                <div>
-                                                    <div style={{ fontWeight: 600 }}>{FORMAT_LABELS[fmt]}</div>
-                                                    <div className="muted" style={{ fontSize: '0.85rem' }}>
-                                                        {FORMAT_DESCRIPTIONS[fmt]}{disabled ? ' · Omitido mientras el fallback está apagado.' : ''}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div style={{ display: 'flex', gap: '0.25rem' }}>
-                                                <button
-                                                    className="btn btn-ghost"
-                                                    style={{ padding: '0.35rem', borderRadius: '10px' }}
-                                                    onClick={() => moveFormat(fmt, -1)}
-                                                    disabled={idx === 0}
-                                                    aria-label={`Subir ${fmt}`}
-                                                >
-                                                    <ChevronUp size={16} />
-                                                </button>
-                                                <button
-                                                    className="btn btn-ghost"
-                                                    style={{ padding: '0.35rem', borderRadius: '10px' }}
-                                                    onClick={() => moveFormat(fmt, 1)}
-                                                    disabled={idx === formatPreference.length - 1}
-                                                    aria-label={`Bajar ${fmt}`}
-                                                >
-                                                    <ChevronDown size={16} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            <div className="field-label">Orden de formatos</div>
+                            <div style={{ padding: '0.75rem', border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--panel, #0f1623)' }}>
+                                <div style={{ fontWeight: 600, marginBottom: '6px' }}>{preferenceSummary}</div>
+                                <p className="muted" style={{ fontSize: '0.9rem', marginBottom: '0.4rem' }}>
+                                    Arrastra en el editor para priorizar formatos. El fallback lossy depende del switch.
+                                </p>
+                                <button className="btn btn-secondary" onClick={() => setShowFormatModal(true)}>
+                                    <Settings size={16} /> Editar prioridad
+                                </button>
                             </div>
-                            <button onClick={resetPreference} className="btn btn-ghost" style={{ marginTop: '0.4rem' }}>
-                                Reset orden
-                            </button>
                         </div>
 
                         <div>
@@ -303,11 +277,20 @@ export default function Dashboard() {
                             <input
                                 type="number"
                                 min="1"
+                                max={MAX_TRACKS_PER_JOB}
                                 className="input"
                                 placeholder="Todos los tracks"
                                 value={trackLimit}
-                                onChange={(e) => setTrackLimit(e.target.value)}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (!val) return setTrackLimit('');
+                                    const n = Math.min(parseInt(val, 10) || 0, MAX_TRACKS_PER_JOB);
+                                    setTrackLimit(n ? String(n) : '');
+                                }}
                             />
+                            <p className="muted" style={{ fontSize: '0.9rem', marginTop: '0.35rem' }}>
+                                Máx {MAX_TRACKS_PER_JOB} tracks por job; si la playlist tiene más, tomamos los primeros {MAX_TRACKS_PER_JOB}.
+                            </p>
                         </div>
                         <div>
                             <div className="field-label">Descargar por URL/ID</div>
@@ -403,5 +386,111 @@ export default function Dashboard() {
                 )}
             </section>
         </div>
+
+        <AnimatePresence>
+            {showFormatModal && (
+                <motion.div
+                    className="modal-backdrop"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        background: 'rgba(0,0,0,0.55)',
+                        display: 'grid',
+                        placeItems: 'center',
+                        zIndex: 30,
+                        padding: '1rem',
+                    }}
+                    onClick={() => setShowFormatModal(false)}
+                >
+                    <motion.div
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.95, opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            background: 'var(--panel, #0f1623)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '14px',
+                            padding: '1rem',
+                            maxWidth: 520,
+                            width: '100%',
+                            boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+                        }}
+                    >
+                        <div className="panel-title" style={{ marginBottom: '0.8rem' }}>
+                            <div>
+                                <p className="muted" style={{ marginBottom: '6px' }}>Editor de prioridad</p>
+                                <h3>Ordena los formatos</h3>
+                            </div>
+                            <button className="btn btn-ghost" onClick={() => setShowFormatModal(false)}>
+                                <X size={16} /> Cerrar
+                            </button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                            {formatPreference.map((fmt, idx) => {
+                                const disabled = fmt === 'lossy' && !allowLossy;
+                                return (
+                                    <div
+                                        key={fmt}
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            padding: '0.65rem 0.75rem',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: '10px',
+                                            background: disabled ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.05)',
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                                            <span className="pill">#{idx + 1}</span>
+                                            <div>
+                                                <div style={{ fontWeight: 600 }}>{FORMAT_LABELS[fmt]}</div>
+                                                <div className="muted" style={{ fontSize: '0.85rem' }}>
+                                                    {FORMAT_DESCRIPTIONS[fmt]}{disabled ? ' · Omitido mientras el fallback está apagado.' : ''}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '0.3rem' }}>
+                                            <button
+                                                className="btn btn-ghost"
+                                                style={{ padding: '0.35rem', borderRadius: '10px' }}
+                                                onClick={() => moveFormat(fmt, -1)}
+                                                disabled={idx === 0}
+                                                aria-label={`Subir ${fmt}`}
+                                            >
+                                                <ChevronUp size={16} />
+                                            </button>
+                                            <button
+                                                className="btn btn-ghost"
+                                                style={{ padding: '0.35rem', borderRadius: '10px' }}
+                                                onClick={() => moveFormat(fmt, 1)}
+                                                disabled={idx === formatPreference.length - 1}
+                                                aria-label={`Bajar ${fmt}`}
+                                            >
+                                                <ChevronDown size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.9rem', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <button className="btn btn-ghost" onClick={resetPreference}>
+                                Reset orden
+                            </button>
+                            <button className="btn btn-primary" onClick={() => setShowFormatModal(false)}>
+                                Guardar y cerrar
+                            </button>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+        </>
     );
 }

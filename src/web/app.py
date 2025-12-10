@@ -16,11 +16,19 @@ from src.web.api import router as api_router
 
 app = FastAPI(title="Soulmate Web")
 
+session_secret = os.getenv("SESSION_SECRET")
+if not session_secret:
+    raise RuntimeError("SESSION_SECRET env var is required for session signing")
+session_https_only = os.getenv("SESSION_HTTPS_ONLY", "false").lower() == "true"
+session_secure_cookie = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+session_same_site = os.getenv("SESSION_SAMESITE", "lax")
+
 app.add_middleware(
-    SessionMiddleware, 
-    secret_key="super-secret-key-change-me",
-    https_only=False, # Relax for local dev debugging
-    max_age=3600 # 1 hour
+    SessionMiddleware,
+    secret_key=session_secret,
+    https_only=session_https_only,
+    max_age=3600,  # 1 hour
+    same_site=session_same_site,
 )
 
 app.add_middleware(
@@ -42,9 +50,6 @@ ASSETS_DIR = os.path.join(DIST_DIR, "assets")
 
 if os.path.exists(ASSETS_DIR):
     app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
-
-if os.path.exists("downloads"):
-    app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
 
 # Catch-all for SPA (serve index.html for any other route)
 @app.get("/{full_path:path}")
