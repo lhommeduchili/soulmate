@@ -42,6 +42,6 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: soulmate-tunnel
     restart: unless-stopped
-    command: tunnel run --config /etc/cloudflared/config.yml
+    command: tunnel run
     volumes:
       - ./cloudflared:/etc/cloudflared
