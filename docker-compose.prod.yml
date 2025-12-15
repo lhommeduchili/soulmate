@@ -1,4 +1,3 @@
-version: "3"
 services:
   backend:
     build:
@@ -44,5 +43,5 @@ services:
     container_name: soulmate-tunnel
     restart: unless-stopped
     command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    volumes:
+      - ./cloudflared:/etc/cloudflared

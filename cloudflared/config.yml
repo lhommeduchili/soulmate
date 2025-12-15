@@ -1,0 +1,7 @@
+tunnel: <YOUR-TUNNEL-UUID-HERE>
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  - hostname: soulmate.lhommeduchili.xyz
+    service: http://soulmate-backend:8000
+  - service: http_status:404

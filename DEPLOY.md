@@ -37,26 +37,55 @@ TUNNEL_TOKEN=your_cloudflare_tunnel_token
 > [!IMPORTANT]
 > The `SPOTIPY_REDIRECT_URI` must match the domain you will set up in Cloudflare (https://soulmate.lhommeduchili.xyz/api/auth/callback) and must be whitelisted in your Spotify Developer Dashboard.
 
-## Step 3: Cloudflare Tunnel Setup
+## Step 3: Create Dedicated Local Tunnel
 
-1.  Go to the [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/).
-2.  Navigate to **Networks > Tunnels**.
-3.  Click **Create a Tunnel**.
-4.  Name it `soulmate-pi`.
-5.  **Choose your environment**: Select **Docker**.
-6.  You will see a command like `docker run cloudflare/cloudflared:latest tunnel --no-autoupdate run --token <HUGE_STRING>`.
-7.  **Copy ONLY the token string** (the part after `--token`).
-8.  Paste this token into your `.env` file as `TUNNEL_TOKEN`.
+To keep the configuration inside this project directory and isolated from your n8n Setup, we will create a **new tunnel** just for Soulmate.
 
-### Configure Public Hostname
-1.  In the Tunnel setup page, click **Next**.
-2.  **Public Hostname**:
-    -   **Subdomain**: `soulmate`
-    -   **Domain**: `lhommeduchili.xyz`
-    -   **Path**: leave empty
-3.  **Service**:
-    -   **Type**: `HTTP`
-    -   **URL**: `soulmate-backend:8000` (Note: we use the container name `soulmate-backend` here, not localhost, because the tunnel is running inside the docker network).
+### 1. Authenticate & Create Tunnel (using Docker)
+Since we want to avoid installing binaries on the host if possible, we use the docker image to generate the credentials.
+
+1.  **Login to Cloudflare**:
+    ```bash
+    # Create directory and set permissions (cloudflared runs as user 65532)
+    mkdir -p cloudflared
+    chmod 777 cloudflared
+
+    # This will print a URL. Visit it in your browser to authorize.
+    # It will save a cert.pem to your ./cloudflared directory.
+    docker run -it --rm -v ./cloudflared:/home/nonroot/.cloudflared cloudflare/cloudflared:latest tunnel login
+    ```
+
+2.  **Create the Tunnel**:
+    ```bash
+    # Replace 'soulmate-pi' with any name you like
+    docker run -it --rm -v ./cloudflared:/home/nonroot/.cloudflared cloudflare/cloudflared:latest tunnel create soulmate-pi
+    ```
+    This command will:
+    *   Create a tunnel ID.
+    *   Create a JSON credentials file in `./cloudflared/<UUID>.json`.
+    *   **NOTE**: You must rename this file to `credentials.json` so our config matches easily, OR copy the UUID and update `cloudflared/config.yml`.
+    
+    **Easier path**: Run `mv cloudflared/*.json cloudflared/credentials.json`.
+
+### 2. Configure `config.yml`
+Edit the file `cloudflared/config.yml` in this project:
+
+```yaml
+tunnel: <PASTE-YOUR-TUNNEL-UUID-HERE>
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  - hostname: soulmate.lhommeduchili.xyz
+    service: http://soulmate-backend:8000
+  - service: http_status:404
+```
+
+### 3. Route DNS
+Finally, tell Cloudflare to point the domain to this new tunnel:
+
+```bash
+docker run -it --rm -v ./cloudflared:/home/nonroot/.cloudflared cloudflare/cloudflared:latest tunnel route dns soulmate-pi soulmate.lhommeduchili.xyz
+```
 
 ## Step 4: Run the Application
 
