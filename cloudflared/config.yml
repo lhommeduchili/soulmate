@@ -1,4 +1,4 @@
-tunnel: 1e0e7730-983e-4624-ab24-bc61ea6cea63
+tunnel: <INSERT-YOUR-TUNNEL-UUID-HERE>
 credentials-file: /etc/cloudflared/credentials.json
 
 ingress:
