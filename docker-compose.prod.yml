@@ -1,0 +1,48 @@
+version: "3"
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: soulmate-backend
+    env_file:
+      - .env
+    environment:
+      # slskd service name in this compose network
+      - SLSKD_HOST=http://slskd:5030
+      # Internal path inside the container where slskd downloads are mounted
+      - SLSKD_DOWNLOAD_DIR=/downloads/slskd
+      # Where zip files go
+      - OUTPUT_ROOT=/downloads/out
+    ports:
+      - "8000:8000"
+    volumes:
+      # We only mount downloads, not the code, to use the built image code
+      - ./slskd_local/downloads:/downloads/slskd
+      - ./downloads:/downloads/out
+    depends_on:
+      - slskd
+    restart: unless-stopped
+
+  slskd:
+    image: slskd/slskd:latest
+    container_name: soulmate-slskd
+    ports:
+      - "5030:5030"
+      - "50300:50300"
+      - "50300:50300/udp"
+    environment:
+      - SLSKD_REMOTE_CONFIGURATION=true
+    volumes:
+      - ./slskd_local/config/slskd.yml:/app/slskd.yml
+      - ./slskd_local/downloads:/app/downloads
+      - ./slskd_local/data:/app/data
+    restart: unless-stopped
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: soulmate-tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}

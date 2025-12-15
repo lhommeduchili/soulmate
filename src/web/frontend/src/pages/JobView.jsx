@@ -18,6 +18,9 @@ export default function JobView() {
     const [isPausing, setIsPausing] = useState(false);
     const [showLogs, setShowLogs] = useState(true);
 
+    const [isDownloadingBatch, setIsDownloadingBatch] = useState(false);
+    const [downloadProgress, setDownloadProgress] = useState('');
+
     const scrollRef = useRef(null);
     const intervalRef = useRef(null);
     const jobRef = useRef(null);
@@ -33,14 +36,14 @@ export default function JobView() {
 
     useEffect(() => {
         const handleBeforeUnload = (e) => {
-            if (jobRef.current && (jobRef.current.status === 'running' || jobRef.current.status === 'paused')) {
+            if ((jobRef.current && (jobRef.current.status === 'running' || jobRef.current.status === 'paused')) || isDownloadingBatch) {
                 e.preventDefault();
                 e.returnValue = '';
             }
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, []);
+    }, [isDownloadingBatch]);
 
     useEffect(() => {
         jobRef.current = job;
@@ -57,7 +60,11 @@ export default function JobView() {
             const res = await axios.get(`/api/jobs/${jobId}`);
             setJob(res.data);
             setJobError(null);
-            fetchFiles();
+            // Only fetch files if we are not currently managing them in the download loop to avoid race conditions
+            // effectively allowing the loop to be the source of truth for updates during batch download
+            if (!isDownloadingBatch) {
+                fetchFiles();
+            }
             if (res.data.status === 'completed' || res.data.status === 'failed') {
                 if (intervalRef.current) clearInterval(intervalRef.current);
             }
@@ -134,10 +141,66 @@ export default function JobView() {
         }
     };
 
-    const downloadSelected = () => {
+    const downloadSelected = async () => {
         if (selectedIndices.size === 0) return;
-        const indices = Array.from(selectedIndices).join(',');
-        window.location.href = `/api/jobs/${jobId}/archive?indices=${indices}`;
+
+        // Map currently selected indices to their filenames BEFORE we start downloading/deleting
+        const filesToDownload = Array.from(selectedIndices)
+            .sort((a, b) => a - b)
+            .map(i => files[i])
+            .filter(f => f); // safety check
+
+        if (filesToDownload.length === 0) return;
+
+        setIsDownloadingBatch(true);
+        setSelectedIndices(new Set());
+
+        try {
+            for (let i = 0; i < filesToDownload.length; i++) {
+                const fileName = filesToDownload[i];
+                const baseName = fileName.split('/').pop();
+                setDownloadProgress(`${i + 1}/${filesToDownload.length}: ${baseName}`);
+
+                // 1. Refresh file list from server to find current index
+                const freshFilesRes = await axios.get(`/api/jobs/${jobId}/files`);
+                const freshFiles = freshFilesRes.data.files || [];
+                setFiles(freshFiles);
+
+                const currentIndex = freshFiles.indexOf(fileName);
+                if (currentIndex === -1) {
+                    console.warn(`File ${fileName} no longer exists, skipping.`);
+                    continue;
+                }
+
+                // 2. Download blob
+                const response = await axios.get(
+                    `/api/jobs/${jobId}/file_by_index/${currentIndex}`,
+                    { responseType: 'blob' }
+                );
+
+                // 3. Trigger browser download
+                // It is important to create the URL and click it to force a "save" dialog or auto-save
+                const url = window.URL.createObjectURL(new Blob([response.data]));
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', baseName);
+                document.body.appendChild(link);
+                link.click();
+                link.parentNode.removeChild(link);
+                window.URL.revokeObjectURL(url);
+
+                // Small delay to ensure browser handles the download event nicely before next heavy request
+                await new Promise(r => setTimeout(r, 500));
+            }
+        } catch (err) {
+            console.error("Batch download failed", err);
+            alert("Hubo un error en la descarga secuencial.");
+        } finally {
+            setIsDownloadingBatch(false);
+            setDownloadProgress('');
+            fetchJob(); // Final refresh
+            fetchFiles();
+        }
     };
 
     const handleLogout = async () => {
@@ -199,15 +262,15 @@ export default function JobView() {
     return (
         <div className="container">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
-                    <button className="btn btn-ghost" onClick={() => {
-                        if (job.status === 'running' || job.status === 'paused') {
-                            const ok = window.confirm("Si vuelves atrás mientras el job está activo se cancelará y se borrarán sus archivos. ¿Volver?");
-                            if (!ok) return;
-                            handleCancel();
-                            return;
-                        }
-                        navigate('/');
-                    }}>
+                <button className="btn btn-ghost" onClick={() => {
+                    if (job.status === 'running' || job.status === 'paused') {
+                        const ok = window.confirm("Si vuelves atrás mientras el job está activo se cancelará y se borrarán sus archivos. ¿Volver?");
+                        if (!ok) return;
+                        handleCancel();
+                        return;
+                    }
+                    navigate('/');
+                }}>
                     <ArrowLeft size={16} /> Volver a playlists
                 </button>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -284,11 +347,15 @@ export default function JobView() {
                         </div>
                         <button
                             onClick={downloadSelected}
-                            disabled={selectedIndices.size === 0}
+                            disabled={selectedIndices.size === 0 || isDownloadingBatch}
                             className="btn btn-primary"
-                            style={{ opacity: selectedIndices.size === 0 ? 0.6 : 1, cursor: selectedIndices.size === 0 ? 'not-allowed' : 'pointer' }}
+                            style={{ opacity: (selectedIndices.size === 0 && !isDownloadingBatch) ? 0.6 : 1, cursor: (selectedIndices.size === 0 && !isDownloadingBatch) ? 'not-allowed' : 'pointer' }}
                         >
-                            <Download size={16} /> Bajar selección ({selectedIndices.size})
+                            {isDownloadingBatch ? (
+                                <><Loader size={16} className="animate-spin" /> {downloadProgress}</>
+                            ) : (
+                                <><Download size={16} /> Bajar selección ({selectedIndices.size})</>
+                            )}
                         </button>
                     </div>
 
