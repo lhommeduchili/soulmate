@@ -7,7 +7,7 @@ import {
     Terminal, FileAudio, Pause, Play, CheckSquare, Square,
     LogOut, ClipboardCopy
 } from 'lucide-react';
-import { removeToken } from '../utils/auth';
+
 
 export default function JobView() {
     const { jobId } = useParams();
@@ -214,7 +214,7 @@ export default function JobView() {
                 console.error('Failed to cancel on logout', e);
             }
         }
-        removeToken();
+
         axios.post('/api/auth/logout').finally(() => {
             window.location.href = '/login';
         });

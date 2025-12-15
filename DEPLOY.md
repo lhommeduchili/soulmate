@@ -109,3 +109,26 @@ This will:
 
 -   **Logs**: `docker-compose -f docker-compose.prod.yml logs -f`
 -   **Architecture**: If you are on a very old Pi (ARMv6/v7), you might run into issues with the `node:18-alpine` or `slskd` images. Pi 3/4/5 (ARM64) are fully supported.
+
+## Updating the Application
+
+When you make changes to the code (frontend or backend), you DO NOT need to redo the tunnel or config steps. Just follow this loop:
+
+1.  **Push changes** from your computer:
+    ```bash
+    git add .
+    git commit -m "New features"
+    git push origin version/raspi-compatible
+    ```
+
+2.  **Pull & Rebuild** on the Raspberry Pi:
+    ```bash
+    # Go to folder
+    cd soulmate
+
+    # Get latest code
+    git pull origin version/raspi-compatible
+
+    # Rebuild and restart (only modified containers will restart)
+    docker-compose -f docker-compose.prod.yml up -d --build
+    ```

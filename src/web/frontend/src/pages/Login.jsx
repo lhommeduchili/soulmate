@@ -1,12 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
-import { Music, ArrowRight, ShieldCheck, Sparkles, UserPlus, LogIn } from 'lucide-react';
-import { supabase } from '../utils/supabase';
+import { Music, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
 
 export default function Login() {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
     const [message, setMessage] = useState('');
 
     const handleLogin = async () => {
@@ -20,40 +17,7 @@ export default function Login() {
             }
         } catch (err) {
             console.error("Login error:", err);
-            setMessage("Login error: " + err.message);
-        }
-    };
-
-    const handleSignup = async () => {
-        setMessage('');
-        if (!email || !password) {
-            setMessage('Completa email y contraseña.');
-            return;
-        }
-        try {
-            const { error } = await supabase.auth.signUp({
-                email,
-                password,
-            });
-            if (error) throw error;
-            setMessage('Cuenta creada. Revisa tu correo si se requiere confirmación y luego inicia sesión.');
-        } catch (e) {
-            setMessage(e.message);
-        }
-    };
-
-    const handleUserLogin = async () => {
-        setMessage('');
-        if (!email || !password) {
-            setMessage('Completa email y contraseña.');
-            return;
-        }
-        try {
-            const { error } = await supabase.auth.signInWithPassword({ email, password });
-            if (error) throw error;
-            setMessage('Sesión iniciada. Ahora conecta con Spotify.');
-        } catch (e) {
-            setMessage(e.message);
+            setMessage("Login error: " + (err.response?.data?.detail || err.message));
         }
     };
 
@@ -83,33 +47,6 @@ export default function Login() {
                         <div>• Descarga playlists completas o por track.</div>
                         <div>• Preferencias guardadas localmente.</div>
                     </div>
-
-                    <div className="surface" style={{ marginTop: '1rem', padding: '1rem' }}>
-                        <div className="field-label">Crea tu usuario</div>
-                        <input
-                            className="input"
-                            placeholder="Email"
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                        />
-                        <input
-                            className="input"
-                            type="password"
-                            placeholder="Contraseña"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                        />
-                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
-                            <button onClick={handleSignup} className="btn btn-ghost">
-                                <UserPlus size={16} /> Crear cuenta
-                            </button>
-                            <button onClick={handleUserLogin} className="btn btn-secondary">
-                                <LogIn size={16} /> Iniciar sesión
-                            </button>
-                        </div>
-                        {message && <div className="pill" style={{ marginTop: '0.6rem' }}>{message}</div>}
-                    </div>
                 </div>
 
                 <div className="surface" style={{ position: 'relative', overflow: 'hidden' }}>
@@ -135,8 +72,9 @@ export default function Login() {
                         </button>
 
                         <p className="muted" style={{ marginTop: '1rem', fontSize: '0.9rem', textAlign: 'center' }}>
-                            Primero crea/inicia sesión de usuario; luego te redirigimos a Spotify. No guardamos tus credenciales de Spotify.
+                            Te redirigiremos a Spotify para autorizar el acceso a tu biblioteca. No guardamos tus credenciales.
                         </p>
+                        {message && <div className="pill danger" style={{ marginTop: '0.6rem', textAlign: 'center' }}>{message}</div>}
                     </div>
                 </div>
             </motion.div>

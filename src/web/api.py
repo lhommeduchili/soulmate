@@ -22,7 +22,6 @@ from src.web.session import (
     get_session,
     refresh_session_if_needed,
 )
-from src.web.supabase_auth import verify_request_user, user_id_from_payload
 
 ALLOWED_FORMATS = {"wav", "flac", "aiff", "alac", "lossy"}
 
@@ -65,13 +64,8 @@ def _require_session(request: Request) -> SessionData:
     session = get_session(session_id)
     return refresh_session_if_needed(session)
 
-def _require_user(request: Request) -> str:
-    payload = verify_request_user(request)
-    return user_id_from_payload(payload)
-
 @router.get("/auth/login")
 def login(request: Request):
-    _require_user(request)
     sp_oauth = get_spotify_oauth()
     state = _create_oauth_state()
     auth_url = sp_oauth.get_authorize_url(state=state)
@@ -111,11 +105,11 @@ def logout(request: Request):
 
 
 @router.get("/auth/me")
-def auth_me(session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
-    return {"user_id": session.spotify_user_id, "display_name": session.display_name, "app_user": user}
+def auth_me(session: SessionData = Depends(_require_session)):
+    return {"user_id": session.spotify_user_id, "display_name": session.display_name, "app_user": "spotify_only"}
 
 @router.get("/playlists")
-def get_playlists(user: str = Depends(_require_user), session: SessionData = Depends(_require_session)):
+def get_playlists(session: SessionData = Depends(_require_session)):
     # Use the token to get playlists
     import spotipy
     token_info = refresh_session_if_needed(session).token_info
@@ -172,7 +166,7 @@ class DownloadCandidateRequest(BaseModel):
     candidate: CandidateOut
 
 @router.post("/download")
-def start_download(req: DownloadRequest, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
+def start_download(req: DownloadRequest, session: SessionData = Depends(_require_session)):
     from src.web.state import MAX_CONCURRENT_JOBS
 
     if _active_job_count() >= MAX_CONCURRENT_JOBS:
@@ -243,7 +237,6 @@ def _get_owned_job(job_id: str, session: SessionData) -> Any:
 def get_candidates(
     playlist_id: str,
     session: SessionData = Depends(_require_session),
-    user: str = Depends(_require_user),
     limit_per_track: int = 5,
 ):
     """Return top candidates per track (preview) without downloading."""
@@ -287,7 +280,6 @@ def download_candidate(
     req: DownloadCandidateRequest,
     background_tasks: BackgroundTasks,
     session: SessionData = Depends(_require_session),
-    user: str = Depends(_require_user),
 ):
     """Download a specific candidate selected by the user."""
     slskd_host = os.getenv("SLSKD_HOST")
@@ -360,26 +352,26 @@ def download_candidate(
     return FileResponse(dst_path, media_type="application/octet-stream", filename=filename, background=background_tasks)
 
 @router.get("/jobs/{job_id}")
-def get_job(job_id: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
+def get_job(job_id: str, session: SessionData = Depends(_require_session)):
     job = _get_owned_job(job_id, session)
     payload = job.__dict__.copy()
     payload["pending_count"] = len(getattr(job, "pending_files", []) or [])
     return payload
 
 @router.get("/jobs/{job_id}/download")
-def download_job_result(job_id: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
+def download_job_result(job_id: str, session: SessionData = Depends(_require_session)):
     _get_owned_job(job_id, session)
     raise HTTPException(status_code=400, detail="Direct downloads only; access files under /downloads/")
 
 
 @router.get("/jobs/{job_id}/files")
-def list_job_files(job_id: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
+def list_job_files(job_id: str, session: SessionData = Depends(_require_session)):
     job = _get_owned_job(job_id, session)
     return {"files": job.files}
 
 
 @router.get("/jobs/{job_id}/files/{file_path:path}")
-def download_job_file(job_id: str, file_path: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
+def download_job_file(job_id: str, file_path: str, session: SessionData = Depends(_require_session)):
     job = _get_owned_job(job_id, session)
     if job.status != "completed":
         raise HTTPException(status_code=400, detail="Job not ready")
@@ -400,7 +392,6 @@ def stream_next_file(
     job_id: str,
     background_tasks: BackgroundTasks,
     session: SessionData = Depends(_require_session),
-    user: str = Depends(_require_user),
 ):
     """Serve the next pending file for this job and delete it on the server after sending."""
     job = _get_owned_job(job_id, session)
@@ -453,7 +444,6 @@ def download_job_file_by_index(
     index: int,
     background_tasks: BackgroundTasks,
     session: SessionData = Depends(_require_session),
-    user: str = Depends(_require_user),
 ):
     """Download a file by its index in the job.files list to avoid path encoding issues."""
     job = _get_owned_job(job_id, session)
@@ -501,7 +491,7 @@ def download_job_file_by_index(
 
 
 @router.post("/jobs/{job_id}/pause")
-def pause_job(job_id: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
+def pause_job(job_id: str, session: SessionData = Depends(_require_session)):
     job = _get_owned_job(job_id, session)
     if job.status == "running":
         job.status = "paused"
@@ -509,7 +499,7 @@ def pause_job(job_id: str, session: SessionData = Depends(_require_session), use
     return {"status": job.status}
 
 @router.post("/jobs/{job_id}/resume")
-def resume_job(job_id: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
+def resume_job(job_id: str, session: SessionData = Depends(_require_session)):
     job = _get_owned_job(job_id, session)
     if job.status == "paused":
         job.status = "running"
@@ -517,7 +507,7 @@ def resume_job(job_id: str, session: SessionData = Depends(_require_session), us
     return {"status": job.status}
 
 @router.post("/jobs/{job_id}/cancel")
-def cancel_job(job_id: str, session: SessionData = Depends(_require_session), user: str = Depends(_require_user)):
+def cancel_job(job_id: str, session: SessionData = Depends(_require_session)):
     """Cancel a job and remove its downloaded files on the server."""
     job = _get_owned_job(job_id, session)
     job.status = "cancelled"
