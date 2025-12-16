@@ -70,7 +70,7 @@ def _require_session(request: Request) -> SessionData:
 def login(request: Request):
     sp_oauth = get_spotify_oauth()
     state = _create_oauth_state()
-    auth_url = sp_oauth.get_authorize_url(state=state)
+    auth_url = sp_oauth.get_authorize_url(state=state, show_dialog=True)
     return {"url": auth_url}
 
 @router.get("/auth/callback")
