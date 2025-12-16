@@ -6,23 +6,23 @@ import { Disc, Download, Search, X, Settings, Music, Zap, ListMusic, LogOut, Che
 
 
 
-const DEFAULT_FORMAT_ORDER = ['aiff', 'flac', 'wav', 'lossy'];
-const MAX_TRACKS_PER_JOB = 50;
+const DEFAULT_FORMAT_ORDER = ['aiff', 'wav', 'flac', 'lossy'];
+const MAX_TRACKS_PER_JOB = 30;
 const FORMAT_LABELS = {
     aiff: 'AIFF',
-    flac: 'FLAC',
     wav: 'WAV',
+    flac: 'FLAC',
     lossy: 'Lossy',
 };
 const FORMAT_DESCRIPTIONS = {
-    aiff: 'Sin compresión, máxima fidelidad.',
-    flac: 'Compresión sin pérdida, archivos más ligeros.',
-    wav: 'Wave sin comprimir, compatible en todos lados.',
+    aiff: 'Sin compresión, audio de alta calidad. Soporte de metadata en macOS.',
+    wav: 'Sin compresión, audio de alta calidad. Máxima compatibilidad.',
+    flac: 'Compresión sin pérdida, audio de alta calidad. Archivos más ligeros.',
     lossy: 'Acepta MP3/OGG cuando no hay lossless disponible.',
 };
 
 const sanitizePreference = (order = []) => {
-    const allowed = ['aiff', 'flac', 'wav', 'lossy'];
+    const allowed = ['aiff', 'wav', 'flac', 'lossy'];
     const clean = [];
     order.forEach((fmt) => {
         const key = String(fmt || '').toLowerCase();
@@ -135,7 +135,7 @@ export default function Dashboard() {
             if (err.response && err.response.status === 429) {
                 alert("Límite de sesiones concurrentes alcanzado. Intenta más tarde.");
             } else {
-                alert("Failed to start download. Check server logs.");
+                alert("No se pudo empezar la descarga. Chequea los logs del servidor.");
             }
         }
     };
@@ -155,9 +155,7 @@ export default function Dashboard() {
         });
     };
 
-    const inspectPlaylist = (id) => {
-        navigate(`/inspect/${id}`);
-    };
+
 
     const filtered = playlists.filter((pl) =>
         pl.name.toLowerCase().includes(query.toLowerCase().trim())
@@ -368,9 +366,6 @@ export default function Dashboard() {
                                             <button className="small-btn primary" onClick={() => startDownload(pl.id)}>
                                                 <Download size={16} /> Descargar
                                             </button>
-                                            <button className="small-btn" onClick={() => inspectPlaylist(pl.id)}>
-                                                <Search size={16} /> Ver candidatos
-                                            </button>
                                         </div>
                                     </div>
                                 </motion.div>
@@ -412,13 +407,13 @@ export default function Dashboard() {
                             transition={{ duration: 0.15 }}
                             onClick={(e) => e.stopPropagation()}
                             style={{
-                                background: 'var(--panel, #0f1623)',
+                                background: 'rgba(15, 22, 35, 0.95)',
                                 border: '1px solid var(--border)',
                                 borderRadius: '14px',
                                 padding: '1rem',
                                 maxWidth: 520,
                                 width: '100%',
-                                boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+                                boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
                             }}
                         >
                             <div className="panel-title" style={{ marginBottom: '0.8rem' }}>

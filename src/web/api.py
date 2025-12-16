@@ -23,7 +23,7 @@ from src.web.session import (
     refresh_session_if_needed,
 )
 
-ALLOWED_FORMATS = {"wav", "flac", "aiff", "alac", "lossy"}
+ALLOWED_FORMATS = {"aiff", "wav", "flac", "lossy"}
 
 router = APIRouter(prefix="/api")
 
@@ -126,7 +126,7 @@ def get_playlists(session: SessionData = Depends(_require_session)):
     
     playlists = []
     try:
-        results = sp.current_user_playlists(limit=50)
+        results = sp.current_user_playlists(limit=30)
         while True:
             for item in results['items']:
                 if item: # Check if item is not None
@@ -154,211 +154,7 @@ class DownloadRequest(BaseModel):
     allow_lossy_fallback: bool = True
     track_limit: Optional[int] = None
 
-class CandidateOut(BaseModel):
-    username: str
-    filename: str
-    size: int
-    ext_score: int
-    reported_speed: Optional[float] = None
-    peer_queue_len: Optional[int] = None
 
-class TrackCandidates(BaseModel):
-    artist: str
-    title: str
-    album: str
-    candidates: List[CandidateOut]
-
-class DownloadCandidateRequest(BaseModel):
-    playlist_id: str
-    playlist_name: str
-    track: Dict[str, str]  # expects artist, title, album
-    candidate: CandidateOut
-
-@router.post("/download")
-def start_download(req: DownloadRequest, session: SessionData = Depends(_require_session)):
-    from src.web.state import MAX_CONCURRENT_JOBS
-
-    if _active_job_count() >= MAX_CONCURRENT_JOBS:
-        raise HTTPException(status_code=429, detail="Límite de sesiones concurrentes alcanzado. Intenta más tarde.")
-    token_info = refresh_session_if_needed(session).token_info
-    submitted_formats: List[str] = []
-    if req.format_preferences:
-        submitted_formats = req.format_preferences
-    elif req.preferred_format:
-        submitted_formats = [req.preferred_format]
-
-    invalid = [f for f in submitted_formats if f and str(f).lower().lstrip(".") not in ALLOWED_FORMATS]
-    if invalid:
-        raise HTTPException(status_code=400, detail="Formato no soportado. Usa aiff, flac, wav o lossy.")
-
-    format_preferences = normalize_format_preference(submitted_formats or None)
-    if req.allow_lossy_fallback:
-        if "lossy" not in format_preferences:
-            format_preferences.append("lossy")
-    else:
-        format_preferences = [p for p in format_preferences if p != "lossy"]
-    track_limit = req.track_limit
-    if track_limit is not None and track_limit <= 0:
-        track_limit = None
-    if track_limit is None or track_limit > 50:
-        track_limit = 50
-    
-    slskd_host = os.getenv("SLSKD_HOST")
-    slskd_api_key = os.getenv("SLSKD_API_KEY")
-    slskd_download_dir = os.getenv("SLSKD_DOWNLOAD_DIR")
-    
-    if not slskd_host or not slskd_api_key or not slskd_download_dir:
-        raise HTTPException(status_code=500, detail="Server misconfigured (missing Slskd config)")
-        
-    job_id = start_download_job(
-        token_info=token_info,
-        playlist_id=req.playlist_id,
-        slskd_host=slskd_host,
-        slskd_api_key=slskd_api_key,
-        slskd_download_dir=slskd_download_dir,
-        format_preferences=format_preferences,
-        allow_lossy_fallback=req.allow_lossy_fallback,
-        track_limit=track_limit,
-        owner_id=session.spotify_user_id,
-        owner_name=session.display_name,
-    )
-    return {"job_id": job_id}
-
-def _candidate_to_dict(c) -> Dict[str, Any]:
-    return {
-        "username": c.username,
-        "filename": c.filename,
-        "size": c.size,
-        "ext_score": c.ext_score,
-        "reported_speed": c.reported_speed,
-        "peer_queue_len": c.peer_queue_len,
-    }
-
-def _get_owned_job(job_id: str, session: SessionData) -> Any:
-    job = JOBS.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if job.owner_id and job.owner_id != session.spotify_user_id:
-        raise HTTPException(status_code=403, detail="No tienes acceso a este job")
-    return job
-
-@router.get("/playlists/{playlist_id}/candidates")
-def get_candidates(
-    playlist_id: str,
-    session: SessionData = Depends(_require_session),
-    limit_per_track: int = 5,
-):
-    """Return top candidates per track (preview) without downloading."""
-    token_info = refresh_session_if_needed(session).token_info
-    sp_client = SpotifyClient(access_token=token_info["access_token"])
-    playlist_name, tracks = sp_client.get_playlist(playlist_id)
-    tracks = tracks[:50]
-
-    slskd_host = os.getenv("SLSKD_HOST")
-    slskd_api_key = os.getenv("SLSKD_API_KEY")
-    if not slskd_host or not slskd_api_key:
-        raise HTTPException(status_code=500, detail="Server misconfigured (missing Slskd config)")
-    preview_prefs = normalize_format_preference([*DEFAULT_FORMAT_PREFERENCE, "lossy"])
-    slsk_client = SoulseekClient(host=slskd_host, api_key=slskd_api_key, format_preferences=preview_prefs)
-
-    result: List[Dict[str, Any]] = []
-    for t in tracks:
-        seen = set()
-        cands: List[Candidate] = []
-        for q in t.query_strings():
-            for c in slsk_client.search_lossless(q, format_preferences=preview_prefs, lossless_only=False, response_limit=40):
-                key = (c.username, c.filename)
-                if key in seen:
-                    continue
-                seen.add(key)
-                cands.append(c)
-        # take top N by current sort order
-        cands = cands[:limit_per_track]
-        result.append(
-            {
-                "artist": t.artist,
-                "title": t.title,
-                "album": t.album,
-                "candidates": [_candidate_to_dict(c) for c in cands],
-            }
-        )
-    return {"playlist_name": playlist_name, "tracks": result}
-
-@router.post("/download_candidate")
-def download_candidate(
-    req: DownloadCandidateRequest,
-    background_tasks: BackgroundTasks,
-    session: SessionData = Depends(_require_session),
-):
-    """Download a specific candidate selected by the user."""
-    slskd_host = os.getenv("SLSKD_HOST")
-    slskd_api_key = os.getenv("SLSKD_API_KEY")
-    slskd_download_dir = os.getenv("SLSKD_DOWNLOAD_DIR")
-    output_root = os.getenv("OUTPUT_ROOT", "downloads/manual")
-    if not slskd_host or not slskd_api_key or not slskd_download_dir:
-        raise HTTPException(status_code=500, detail="Server misconfigured (missing Slskd config)")
-
-    track = Track(artist=req.track.get("artist", ""), title=req.track.get("title", ""), album=req.track.get("album", ""))
-    cand = req.candidate
-
-    slsk_client = SoulseekClient(host=slskd_host, api_key=slskd_api_key, format_preferences=DEFAULT_FORMAT_PREFERENCE)
-    base_remote = basename_any(cand.filename)
-
-    def locate_download() -> Optional[str]:
-        direct = os.path.join(slskd_download_dir, base_remote)
-        if os.path.exists(direct):
-            return direct
-        for root, _, files in os.walk(slskd_download_dir):
-            for f in files:
-                if f == base_remote:
-                    return os.path.join(root, f)
-        return None
-
-    # enqueue
-    try:
-        slsk_client.enqueue_download(cand.username, cand.filename, cand.size)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Enqueue failed: {e}")
-    ok, meta = slsk_client.wait_for_completion(
-        cand.username,
-        base_remote,
-        timeout_s=900.0,
-        file_finder=locate_download,
-    )
-    src_guess = locate_download()
-    if not ok and not src_guess:
-        raise HTTPException(status_code=400, detail="Download failed or timed out")
-    if not src_guess:
-        raise HTTPException(status_code=404, detail="Downloaded file not found in slskd directory")
-
-    ext = os.path.splitext(src_guess)[1]
-    playlist_dir = os.path.join(output_root, safe_filename(req.playlist_name))
-    os.makedirs(playlist_dir, exist_ok=True)
-    final_name = safe_filename(f"{track.artist} - {track.title}{ext}")
-    dst_path = os.path.join(playlist_dir, final_name)
-    try:
-        shutil.move(src_guess, dst_path)
-    except Exception:
-        shutil.copy2(src_guess, dst_path)
-        os.remove(src_guess)
-
-    def _cleanup():
-        try:
-            if os.path.exists(dst_path):
-                os.remove(dst_path)
-            dir_path = os.path.dirname(dst_path)
-            while dir_path.startswith(os.path.abspath(output_root)):
-                if not os.listdir(dir_path):
-                    os.rmdir(dir_path)
-                    dir_path = os.path.dirname(dir_path)
-                else:
-                    break
-        except Exception:
-            pass
-
-    background_tasks.add_task(_cleanup)
-    filename = os.path.basename(dst_path)
-    return FileResponse(dst_path, media_type="application/octet-stream", filename=filename, background=background_tasks)
 
 @router.get("/jobs/{job_id}")
 def get_job(job_id: str, session: SessionData = Depends(_require_session)):
