@@ -75,7 +75,13 @@ def login(request: Request):
     return {"url": auth_url}
 
 @router.get("/auth/callback")
-def callback(request: Request, code: str, state: Optional[str] = None):
+def callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    if error:
+        # User cancelled or access denied
+        return RedirectResponse(url="/login?info=cancelled", status_code=302)
+    if not code:
+        return RedirectResponse(url="/login?error=no_code", status_code=302)
+        
     try:
         _validate_oauth_state(state)
         sp_oauth = get_spotify_oauth()
