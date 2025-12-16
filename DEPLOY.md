@@ -58,7 +58,7 @@ Since we want to avoid installing binaries on the host if possible, we use the d
 2.  **Create the Tunnel**:
     ```bash
     # Replace 'soulmate-pi' with any name you like
-    docker run -it --rm -v ./cloudflared:/home/nonroot/.cloudflared cloudflare/cloudflared:latest tunnel create soulmate-pi
+    docker run -it --rm -v ./cloudflared:/home/nonroot/.cloudflared cloudflare/cloudflared:latest tunnel create soulmate-alpi
     ```
     This command will:
     *   Create a tunnel ID.
@@ -84,7 +84,7 @@ ingress:
 Finally, tell Cloudflare to point the domain to this new tunnel:
 
 ```bash
-docker run -it --rm -v ./cloudflared:/home/nonroot/.cloudflared cloudflare/cloudflared:latest tunnel route dns soulmate-pi soulmate.lhommeduchili.xyz
+docker run -it --rm -v ./cloudflared:/home/nonroot/.cloudflared cloudflare/cloudflared:latest tunnel route dns -f soulmate-alpi soulmate.lhommeduchili.xyz
 ```
 
 ## Step 4: Run the Application
@@ -92,7 +92,7 @@ docker run -it --rm -v ./cloudflared:/home/nonroot/.cloudflared cloudflare/cloud
 Build and start the services using the production compose file:
 
 ```bash
-docker-compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 This will:
@@ -102,12 +102,12 @@ This will:
 
 ## Step 5: Verify
 
-1.  Check container status: `docker-compose -f docker-compose.prod.yml ps`.
+1.  Check container status: `docker compose -f docker-compose.prod.yml ps`.
 2.  Visit `https://soulmate.lhommeduchili.xyz` from any device.
 
 ## Troubleshooting
 
--   **Logs**: `docker-compose -f docker-compose.prod.yml logs -f`
+-   **Logs**: `nan`
 -   **Architecture**: If you are on a very old Pi (ARMv6/v7), you might run into issues with the `node:18-alpine` or `slskd` images. Pi 3/4/5 (ARM64) are fully supported.
 
 ## Updating the Application

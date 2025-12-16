@@ -33,13 +33,15 @@ def _active_job_count() -> int:
 _OAUTH_STATES: Dict[str, float] = {}
 _STATE_TTL_SECONDS = 300
 
+from src.web.cache import NoCacheHandler
+
 def get_spotify_oauth():
     return SpotifyOAuth(
         client_id=os.getenv("SPOTIPY_CLIENT_ID"),
         client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
         redirect_uri=os.getenv("SPOTIPY_REDIRECT_URI"),
         scope="user-library-read playlist-read-private",
-        cache_handler=None # We handle token manually
+        cache_handler=NoCacheHandler()
     )
 
 def _create_oauth_state() -> str:

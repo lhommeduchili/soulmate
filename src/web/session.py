@@ -26,11 +26,13 @@ class SessionData:
 SESSIONS: Dict[str, SessionData] = {}
 
 
+from src.web.cache import NoCacheHandler
+
 def _spotify_auth_manager() -> SpotifyOAuth:
     try:
         return SpotifyOAuth(
             scope="user-library-read playlist-read-private",
-            cache_handler=None,
+            cache_handler=NoCacheHandler(),
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Spotify auth misconfigured: {exc}")
