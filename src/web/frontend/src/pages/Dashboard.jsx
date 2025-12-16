@@ -363,7 +363,7 @@ export default function Dashboard() {
                                         </div>
 
                                         <div className="playlist-actions">
-                                            <button className="small-btn primary" onClick={() => startDownload(pl.id)}>
+                                            <button className="small-btn primary" onClick={() => startDownload(pl.id)} style={{ width: '100%' }}>
                                                 <Download size={16} /> Descargar
                                             </button>
                                         </div>
