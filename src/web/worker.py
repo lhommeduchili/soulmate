@@ -14,7 +14,7 @@ from src.web.state import JOBS, JobState
 from src.utils.formatting import DEFAULT_FORMAT_PREFERENCE, normalize_format_preference
 
 CLEANUP_AFTER_SECONDS = 5 * 60 * 60  # 5 hours
-MAX_TRACKS_PER_JOB = 50
+MAX_TRACKS_PER_JOB = 30
 
 def start_download_job(
     token_info: dict,
@@ -111,11 +111,11 @@ def _download_worker(
         output_dir = os.path.join(output_root, job_id)
         os.makedirs(output_dir, exist_ok=True)
         
-        concurrency_env = 0
+        concurrency_env = 4
         try:
-            concurrency_env = int(os.getenv("DOWNLOADER_CONCURRENCY", "0") or 0)
+            concurrency_env = int(os.getenv("DOWNLOADER_CONCURRENCY", "4") or 4)
         except Exception:
-            concurrency_env = 0
+            concurrency_env = 4
 
         dl = Downloader(
             slsk=slsk_client,

@@ -108,8 +108,9 @@ class Downloader:
         for q in queries:
             self._matrix_print(f" · Query: {q}", progress_callback)
             # Serialize searches to avoid slskd rate limits when running in parallel.
-            with self._search_lock:
-                cands = self.slsk.search_lossless(q, format_preferences=self.format_preferences)
+            # Serialize searches removed for parallelism
+            # with self._search_lock:
+            cands = self.slsk.search_lossless(q, format_preferences=self.format_preferences)
             self._matrix_print(f"   ↳ {len(cands)} hits", progress_callback)
             search_results.append({"query": q, "hits": len(cands), "lossless_only": True})
             for preview in cands[:5]:
@@ -127,10 +128,11 @@ class Downloader:
             # Fallback: search any format
             for q in queries:
                 self._matrix_print(f" · Query (lossy ok): {q}", progress_callback)
-                with self._search_lock:
-                    cands = self.slsk.search_lossless(
-                        q, format_preferences=self.format_preferences, lossless_only=False
-                    )
+                # Serialize searches removed for parallelism
+                # with self._search_lock:
+                cands = self.slsk.search_lossless(
+                    q, format_preferences=self.format_preferences, lossless_only=False
+                )
                 self._matrix_print(f"   ↳ {len(cands)} hits", progress_callback)
                 search_results.append({"query": q, "hits": len(cands), "lossless_only": False})
                 for preview in cands[:5]:
