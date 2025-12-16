@@ -156,7 +156,7 @@ class DownloadRequest(BaseModel):
 
 
 
-@router.post("/download")
+@router.post("/start_download")
 def start_download(req: DownloadRequest, session: SessionData = Depends(_require_session)):
     from src.web.state import MAX_CONCURRENT_JOBS
     from src.web.worker import start_download_job

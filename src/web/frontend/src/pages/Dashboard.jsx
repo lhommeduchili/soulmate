@@ -123,7 +123,7 @@ export default function Dashboard() {
     const startDownload = async (id) => {
         try {
             const parsedLimit = trackLimit ? parseInt(trackLimit, 10) : null;
-            const res = await axios.post('/api/download', {
+            const res = await axios.post('/api/start_download', {
                 playlist_id: id,
                 format_preferences: effectivePreference,
                 allow_lossy_fallback: allowLossy,
