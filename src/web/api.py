@@ -35,13 +35,14 @@ _STATE_TTL_SECONDS = 300
 
 from src.web.cache import NoCacheHandler
 
-def get_spotify_oauth():
+def get_spotify_oauth(show_dialog=False):
     return SpotifyOAuth(
         client_id=os.getenv("SPOTIPY_CLIENT_ID"),
         client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
         redirect_uri=os.getenv("SPOTIPY_REDIRECT_URI"),
         scope="user-library-read playlist-read-private",
-        cache_handler=NoCacheHandler()
+        cache_handler=NoCacheHandler(),
+        show_dialog=show_dialog
     )
 
 def _create_oauth_state() -> str:
@@ -68,9 +69,9 @@ def _require_session(request: Request) -> SessionData:
 
 @router.get("/auth/login")
 def login(request: Request):
-    sp_oauth = get_spotify_oauth()
+    sp_oauth = get_spotify_oauth(show_dialog=True)
     state = _create_oauth_state()
-    auth_url = sp_oauth.get_authorize_url(state=state, show_dialog=True)
+    auth_url = sp_oauth.get_authorize_url(state=state)
     return {"url": auth_url}
 
 @router.get("/auth/callback")
