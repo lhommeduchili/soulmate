@@ -21,6 +21,21 @@ export default function Login() {
         }
     };
 
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const errorMsg = params.get('error');
+        const infoMsg = params.get('info');
+        if (errorMsg) {
+            setMessage(`Login error: ${errorMsg}`);
+            // Optional: clear URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+        } else if (infoMsg === 'cancelled') {
+            setMessage('Login cancelado por el usuario.');
+        } else if (infoMsg) {
+            setMessage(infoMsg);
+        }
+    }, []);
+
     return (
         <div className="container" style={{ minHeight: '80vh', display: 'grid', alignItems: 'center' }}>
             <motion.div

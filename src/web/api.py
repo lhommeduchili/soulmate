@@ -102,7 +102,11 @@ def callback(request: Request, code: Optional[str] = None, state: Optional[str] 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return {"error": "Login failed", "details": str(e), "type": type(e).__name__}
+        # Return to login with error
+        return RedirectResponse(
+            url=f"/login?error={str(e)}",
+            status_code=302
+        )
 
 @router.post("/auth/logout")
 def logout(request: Request):
