@@ -1,0 +1,66 @@
+appId: com.soulmate.app
+productName: soulmate
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - out
+  - package.json
+
+afterSign: scripts/notarize.js
+
+# Protocol Handler
+protocols:
+  - name: soulmate
+    schemes:
+      - soulmate
+
+# Mac Configuration
+mac:
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  identity: "soulmate self-sign"
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  extraResources:
+    - from: "resources/darwin-${arch}/slskd"
+      to: "slskd"
+    - from: "resources/darwin-${arch}/wwwroot"
+      to: "wwwroot"
+    - from: "resources/darwin-${arch}/slskd.staticwebassets.endpoints.json"
+      to: "slskd.staticwebassets.endpoints.json"
+
+# Windows Configuration
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  extraResources:
+    - from: "resources/win32-x64/slskd.exe" # Assuming x64 for now as per script
+      to: "slskd.exe"
+
+# Linux Configuration
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  category: Audio
+  extraResources:
+    - from: "resources/linux-x64/slskd"
+      to: "slskd"
+  desktop:
+    Name: soulmate
+    Type: Application
+    Categories: Audio;Network;

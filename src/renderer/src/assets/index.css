@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-app-bg text-app-text-main font-sans antialiased;
+  /* Scrollbar styling */
+}
+
+/* Custom Scrollbar for WebKit */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-app-surface;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-app-surface-active rounded-full hover:bg-soul-green;
+}

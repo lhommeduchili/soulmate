@@ -1,0 +1,78 @@
+#!/usr/bin/env node
+
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+// Basic Argument Parsing to find config file if passed
+// SlskdService passes env var SLSKD_CONFIG_FILE
+
+const port = process.env.SLSKD_MOCK_PORT || 0; // If 0, we need to read from config, but SlskdService passes port in env maybe? 
+// Actually SlskdService writes a config file. We should try to read the port from it.
+// Or, for the mock, we can easier just grab the port from the arguments if possible, or bind to the port specified in the config.
+
+// Let's read the config file path from env
+const configPath = process.env.SLSKD_CONFIG_FILE;
+let serverPort = 0;
+
+if (configPath && fs.existsSync(configPath)) {
+    try {
+        const content = fs.readFileSync(configPath, 'utf8');
+        // Simple regex to find port in yaml
+        const match = content.match(/port:\s*(\d+)/);
+        if (match) {
+            serverPort = parseInt(match[1]);
+        }
+    } catch (e) {
+        console.error('Failed to read config:', e);
+    }
+}
+
+// Fallback or override
+if (!serverPort) {
+    // If we can't find it, we might fail or default.
+    // SlskdService waits for port to be free, so it expects us to bind to THAT port.
+    // Since SlskdService chose the port, we must bind to it.
+    // Let's assume SlskdService logs the port, but we need to bind.
+    // In our Mock, we can just bind to the port we found.
+    console.error('Could not determine port from config.');
+    process.exit(1);
+}
+
+const server = http.createServer((req, res) => {
+    // Enable CORS
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
+
+    if (req.method === 'OPTIONS') {
+        res.writeHead(200);
+        res.end();
+        return;
+    }
+
+    if (req.url === '/api/v1/search' && req.method === 'POST') {
+        // Mock Search
+        let body = '';
+        req.on('data', chunk => {
+            body += chunk.toString();
+        });
+        req.on('end', () => {
+            console.log('Received search:', body);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ id: 'mock-search-id', state: 'InProgress' }));
+        });
+        return;
+    }
+
+    // Health check or default
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', version: '0.0.0-mock' }));
+});
+
+server.listen(serverPort, () => {
+    console.log(`[MockSlskd] Listening on port ${serverPort}`);
+});
+
+// Keep alive
+setInterval(() => {}, 1000);

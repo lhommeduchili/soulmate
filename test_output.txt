@@ -1,0 +1,33 @@
+
+Running 1 test using 1 worker
+
+  ✘  1 tests/youtube-playlist.spec.ts:20:9 › YouTube Playlist Feature › can add a YouTube playlist via URL and view tracks (22.1s)
+
+
+  1) tests/youtube-playlist.spec.ts:20:9 › YouTube Playlist Feature › can add a YouTube playlist via URL and view tracks 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: locator('h2').filter({ hasText: 'playlists added' })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for locator('h2').filter({ hasText: 'playlists added' })[22m
+
+
+      45 |         // If the implementation changes "spotify playlists added" to "playlists added", this works.
+      46 |         // If not, we might fail here, which prompts the refactor.
+    > 47 |         await expect(addedSection).toBeVisible()
+         |                                    ^
+      48 |     })
+      49 | })
+      50 |
+        at /Users/lhommeduchili/hacking/soulmate/tests/youtube-playlist.spec.ts:47:36
+
+    Error Context: test-results/youtube-playlist-YouTube-P-36c94-ist-via-URL-and-view-tracks/error-context.md
+
+  1 failed
+    tests/youtube-playlist.spec.ts:20:9 › YouTube Playlist Feature › can add a YouTube playlist via URL and view tracks 

@@ -1,0 +1,6 @@
+
+Running 1 test using 1 worker
+
+  ✓  1 tests/youtube-playlist.spec.ts:20:9 › YouTube Playlist Feature › can add a YouTube playlist via URL and view tracks (17.2s)
+
+  1 passed (18.5s)

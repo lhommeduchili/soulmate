@@ -1,0 +1,30 @@
+# dependencies
+node_modules
+
+# build output
+dist
+out
+
+# platform binaries (downloaded via npm run binaries:download)
+resources/darwin-arm64
+resources/darwin-x64
+resources/win32-x64
+resources/linux-x64
+slskd-universal
+
+# environment
+.env
+.env.local
+
+# editor/OS junk
+.DS_Store
+*.swp
+*.swo
+Thumbs.db
+
+# test artifacts
+test-results
+playwright-report
+
+# logs
+*.log
