@@ -1,72 +1,72 @@
-# Manual Testing Guide - Soulmate Phase 3
+# manual testing guide - soulmate phase 3
 
-This guide allows you to verify the full "Search & Queue" workflow of the application.
+this guide allows you to verify the full "search & queue" workflow of the application.
 
-## Prerequisites
-1.  **Spotify App Creds:** Ensure you have `VITE_SPOTIFY_CLIENT_ID` in your `.env`.
-2.  **Spotify Account:** You need a valid Spotify account to log in.
+## prerequisites
+1.  **spotify app creds:** ensure you have `vite_spotify_client_id` in your `.env`.
+2.  **spotify account:** you need a valid spotify account to log in.
 
-## Step-by-Step Verification
+## step-by-step verification
 
-### 1. Launch the Application
-Run the development server. This starts the Main process (Electron) and Renderer (React).
+### 1. launch the application
+run the development server. this starts the main process (electron) and renderer (react).
 ```bash
 npm run dev
 ```
-> **Verify:** The app window opens with the "SOULMATE v2.0" header and the "SYSTEM_DISCONNECTED" status.
+> **verify:** the app window opens with the "soulmate v2.0" header and the "system_disconnected" status.
 
-### 2. Configure Priority (Pre-Login)
-On the login screen, you will see a **Quality Priority** selector.
-1.  **Action:** Use the arrows (▲/▼) to reorder the formats (e.g., move `mp3` to the top).
-2.  **Verify:** The order updates instantly. This preference is saved in the background.
+### 2. configure priority (pre-login)
+on the login screen, you will see a **quality priority** selector.
+1.  **action:** use the arrows (▲/▼) to reorder the formats (e.g., move `mp3` to the top).
+2.  **verify:** the order updates instantly. this preference is saved in the background.
 
-### 3. Authenticate
-1.  **Action:** Click the "LOGIN WITH SPOTIFY" button.
-2.  **Action:** Your browser will open. Accept the permissions.
-3.  **Verify:**
-    - Browser redirects to `soulmate://callback...`.
-    - App comes to foreground.
-    - View switches to the **Playlist Selector** grid.
-    - Header status changes to "SYSTEM_ONLINE".
+### 3. authenticate
+1.  **action:** click the "login with spotify" button.
+2.  **action:** your browser will open. accept the permissions.
+3.  **verify:**
+    - browser redirects to `soulmate://callback...`.
+    - app comes to foreground.
+    - view switches to the **playlist selector** grid.
+    - header status changes to "system_online".
 
-### 4. Select a Playlist
-1.  **Action:** Click on any playlist card (e.g., "Discover Weekly").
-2.  **Verify:**
-    - View switches to the **Playlist Review** table.
-    - Tracks are loaded (you might see a brief "Loading..." or "Decrypting..." state).
-    - All tracks are selected by default.
+### 4. select a playlist
+1.  **action:** click on any playlist card (e.g., "discover weekly").
+2.  **verify:**
+    - view switches to the **playlist review** table.
+    - tracks are loaded (you might see a brief "loading..." or "decrypting..." state).
+    - all tracks are selected by default.
 
-### 5. Review & Queue
-1.  **Action:** Uncheck one track.
-2.  **Action:** Click "DOWNLOAD SELECTED".
-3.  **Verify:**
-    - An alert confirms the number of queued tracks.
-    - **Check Terminal Logs:** Look for `[QueueService] Searching for: ...`.
-    - Note: Since we are using a dummy `slskd` binary in dev, the actual search will log "Search initiated" but might not return results. This confirms the *request logic* is working.
+### 5. review & queue
+1.  **action:** uncheck one track.
+2.  **action:** click "download selected".
+3.  **verify:**
+    - an alert confirms the number of queued tracks.
+    - **check terminal logs:** look for `[queueservice] searching for: ...`.
+    - note: since we are using a dummy `slskd` binary in dev, the actual search will log "search initiated" but might not return results. this confirms the *request logic* is working.
 
-## Troubleshooting
-- **Login doesn't redirect?** Ensure you registered `soulmate://callback` in your Spotify Dashboard.
-- **No Playlists?** Check the terminal for `[SpotifyService] Error`. Ensure your account has public playlists.
+## troubleshooting
+- **login doesn't redirect?** ensure you registered `soulmate://callback` in your spotify dashboard.
+- **no playlists?** check the terminal for `[spotifyservice] error`. ensure your account has public playlists.
 
-### 6. Queue Management (New Features)
-1.  **Marquee Text:**
-    - **Action:** Queue a song with a very long title.
-    - **Verify:** Hovering over the text causing it to scroll horizontally (Marquee effect).
-2.  **Clear Queue:**
-    - **Action:** Hover over the "DOWNLOAD QUEUE" header.
-    - **Verify:** A "CLEAR" button appears on the right.
-    - **Action:** Click "CLEAR".
-    - **Verify:** The queue empties immediately (no confirmation popup).
+### 6. queue management (new features)
+1.  **marquee text:**
+    - **action:** queue a song with a very long title.
+    - **verify:** hovering over the text causing it to scroll horizontally (marquee effect).
+2.  **clear queue:**
+    - **action:** hover over the "download queue" header.
+    - **verify:** a "clear" button appears on the right.
+    - **action:** click "clear".
+    - **verify:** the queue empties immediately (no confirmation popup).
 
-## Phase 4: Packaging Verification
-1.  **Build the App:**
+## phase 4: packaging verification
+1.  **build the app:**
     ```bash
     npm run binaries:download
     npm run build:mac
     ```
-2.  **Inspect Extensions:**
-    - Navigate to `dist/mac-arm64/Soulmate.app/Contents/Resources/`.
-    - **Verify:** `slskd` binary is present (~117MB).
-3.  **Run the Artifact:**
-    - Open `dist/mac-arm64/Soulmate.app`.
-    - **Verify:** App opens, connects (SYSTEM_ONLINE), and performs similarly to dev mode.
+2.  **inspect extensions:**
+    - navigate to `dist/mac-arm64/soulmate.app/contents/resources/`.
+    - **verify:** `slskd` binary is present (~117mb).
+3.  **run the artifact:**
+    - open `dist/mac-arm64/soulmate.app`.
+    - **verify:** app opens, connects (system_online), and performs similarly to dev mode.

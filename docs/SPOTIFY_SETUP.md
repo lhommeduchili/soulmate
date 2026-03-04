@@ -1,35 +1,35 @@
-# Spotify Developer Setup Guide
+# spotify developer setup guide
 
-To enable "Connect with Spotify" in Soulmate, you need to configure a Spotify App in the Developer Dashboard.
+to enable "connect with spotify" in soulmate, you need to configure a spotify app in the developer dashboard.
 
-## 1. Create the App
-1.  Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) and log in.
-2.  Click the **"Create app"** button.
-3.  Fill in the details:
-    -   **App name:** `Soulmate` (or similar)
-    -   **App description:** `Desktop client for DJs.`
-    -   **Redirect URI:** `soulmate://callback` (Crucial!)
-    -   **Which API/SDKs are you planning to use?** Select "Web API".
-4.  Check the terms and click **"Save"**.
+## 1. create the app
+1.  go to the [spotify developer dashboard](https://developer.spotify.com/dashboard) and log in.
+2.  click the **"create app"** button.
+3.  fill in the details:
+    -   **app name:** `soulmate` (or similar)
+    -   **app description:** `desktop client for djs.`
+    -   **redirect uri:** `soulmate://callback` (crucial!)
+    -   **which api/sdks are you planning to use?** select "web api".
+4.  check the terms and click **"save"**.
 
-## 2. Get Credentials
-1.  On your app page, go to **"Settings"**.
-2.  Under **"Basic Information"**, find the **Client ID**.
-3.  Copy this Client ID.
+## 2. get credentials
+1.  on your app page, go to **"settings"**.
+2.  under **"basic information"**, find the **client id**.
+3.  copy this client id.
 
-## 3. Configure User Access (Development Mode)
-By default, new apps are in "Development Mode". You must explicitly add the Spotify accounts that are allowed to log in.
+## 3. configure user access (development mode)
+by default, new apps are in "development mode". you must explicitly add the spotify accounts that are allowed to log in.
 
-1.  Go to **"Settings"** -> **"User Management"**.
-2.  Click **"Add user"**.
-3.  Enter the **name** and **email address** associated with your Spotify account.
-4.  Click **"Add user"**.
-    *   *Note: Without this, you will get an "INVALID_CLIENT: Invalid redirect URI" or "User not registered in the Developer Dashboard" error.*
+1.  go to **"settings"** -> **"user management"**.
+2.  click **"add user"**.
+3.  enter the **name** and **email address** associated with your spotify account.
+4.  click **"add user"**.
+    *   *note: without this, you will get an "invalid_client: invalid redirect uri" or "user not registered in the developer dashboard" error.*
 
-## 4. Configure Soulmate
-1.  Open the `.env` file in the root of the Soulmate project.
-2.  Paste your Client ID:
+## 4. configure soulmate
+1.  open the `.env` file in the root of the soulmate project.
+2.  paste your client id:
     ```env
-    VITE_SPOTIFY_CLIENT_ID=your_pasted_client_id_here
+    vite_spotify_client_id=your_pasted_client_id_here
     ```
-3.  Restart the application (`npm run dev`) if it's running.
+3.  restart the application (`npm run dev`) if it's running.

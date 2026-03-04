@@ -1,33 +1,33 @@
-# Soulmate Implementation Plan
+# soulmate implementation plan
 
-## Phase 1: Foundation & Lifecycle
-- [x] Set up Electron + Vite + TypeScript boilerplate.
-- [x] Implement `SlskdService` to spawn and kill binary.
-- [x] Implement robust zombie process cleanup in `SlskdService` (Auto-kill on start).
-- **Goal:** App opens, slskd starts, App closes -> slskd dies.
+## phase 1: foundation & lifecycle
+- [x] set up electron + vite + typescript boilerplate.
+- [x] implement `slskdservice` to spawn and kill binary.
+- [x] implement robust zombie process cleanup in `slskdservice` (auto-kill on start).
+- **goal:** app opens, slskd starts, app closes -> slskd dies.
 
-## Phase 2: Authentication & Data
-- [x] Implement Spotify OAuth via Deep Linking (`soulmate://callback`).
-- **Goal:** Login opens browser, captures token.
+## phase 2: authentication & data
+- [x] implement spotify oauth via deep linking (`soulmate://callback`).
+- **goal:** login opens browser, captures token.
 
-## Phase 3: The Core & Queue
-- [x] Implement search and download logic.
-    - [x] Backend: Dynamic Slskd Config (with Auto-Creds) & API Client (API v0).
-    - [x] Frontend: Playlist Selector (Matrix Aesthetic).
-    - [x] Logic: Playlist -> Search -> Poll -> Filter -> Download.
-    - [x] Feature: Real-time Search Bar (Cosmetic/Prepared).
-    - [x] Feature: Embedded Spotify Login (Auto-close).
-    - [x] Feature: Real-time Search Bar (Cosmetic/Prepared).
-    - [x] Feature: Embedded Spotify Login (Auto-close).
-    - [x] UI: Matrix-style Sidebar Queue.
-    - [x] **Fix:** Map `slotsFree` correctly in QueueService (solves "No match found").
-    - [x] **Refinement:** Parallelize download queue processing.
-- **Goal:** Selecting a playlist queues items in slskd.
+## phase 3: the core & queue
+- [x] implement search and download logic.
+    - [x] backend: dynamic slskd config (with auto-creds) & api client (api v0).
+    - [x] frontend: playlist selector (matrix aesthetic).
+    - [x] logic: playlist -> search -> poll -> filter -> download.
+    - [x] feature: real-time search bar (cosmetic/prepared).
+    - [x] feature: embedded spotify login (auto-close).
+    - [x] feature: real-time search bar (cosmetic/prepared).
+    - [x] feature: embedded spotify login (auto-close).
+    - [x] ui: matrix-style sidebar queue.
+    - [x] **fix:** map `slotsfree` correctly in queueservice (solves "no match found").
+    - [x] **refinement:** parallelize download queue processing.
+- **goal:** selecting a playlist queues items in slskd.
 
-## Phase 4: Packaging & Distribution
-- [x] Configure `electron-builder` for cross-platform support (Mac/Win/Linux).
-- [x] Create `scripts/download-binaries.ts` for automated binary fetching.
-- [x] Verify integration with real `slskd` binary (E2E Tests Passed).
-- [ ] Integrate `electron-updater` for silent auto-updates.
-- [ ] Set up GitHub Actions CI/CD (lint, test, build, release).
-- **Goal:** Production-ready `Soulmate.app` (Mac) and auto-updating infrastructure.
+## phase 4: packaging & distribution
+- [x] configure `electron-builder` for cross-platform support (mac/win/linux).
+- [x] create `scripts/download-binaries.ts` for automated binary fetching.
+- [x] verify integration with real `slskd` binary (e2e tests passed).
+- [ ] integrate `electron-updater` for silent auto-updates.
+- [ ] set up github actions ci/cd (lint, test, build, release).
+- **goal:** production-ready `soulmate.app` (mac) and auto-updating infrastructure.

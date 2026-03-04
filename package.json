@@ -4,8 +4,13 @@
   "productName": "soulmate",
   "description": "A high-quality, zero-configuration Soulseek client for DJs.",
   "main": "./out/main/index.js",
-  "author": "Soulmate Team",
-  "homepage": "https://github.com/soulmate-app",
+  "author": "soulmate team",
+  "homepage": "https://github.com/lhommeduchili/soulmate",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lhommeduchili/soulmate.git"
+  },
+  "license": "GPL-3.0",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",

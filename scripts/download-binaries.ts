@@ -86,6 +86,17 @@ async function main() {
             // Chmod +x for unix
             if (!plat.name.startsWith('win')) {
                 execSync(`chmod +x "${finalBinaryPath}"`);
+
+                // Sign macOS binaries
+                if (plat.name.startsWith('darwin')) {
+                    console.log(`[Binaries] Signing ${plat.name} with 'soulmate self-sign'...`);
+                    try {
+                        execSync(`codesign --force --sign "soulmate self-sign" "${finalBinaryPath}"`);
+                        console.log(`[Binaries] Successfully signed ${plat.name}`);
+                    } catch (signError) {
+                        console.error(`[Binaries] Failed to sign ${plat.name}:`, signError);
+                    }
+                }
             }
 
             console.log(`[Binaries] ${plat.name} ready.`);

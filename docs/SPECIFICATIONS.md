@@ -1,61 +1,61 @@
-# Soulmate Specifications
+# soulmate specifications
 
-## 1. Objective
-Develop "Soulmate" from scratch—a high-quality, zero-configuration desktop application that allows users (specifically DJs and audiophiles) to download high-quality audio from Soulseek via a Spotify interface.
+## 1. objective
+develop "soulmate" from scratch—a high-quality, zero-configuration desktop application that allows users (specifically djs and audiophiles) to download high-quality audio from soulseek via a spotify interface.
 
-## 2. Core Philosophy
-- **Simplicity First (KISS):** The end user is non-technical. One file, open it, and it works. No terminal, no Docker.
-- **Robustness:** Handle network flakiness, crashes, and rate limits gracefully.
-- **Code Quality:** SOLID principles, DRY, clean architecture.
+## 2. core philosophy
+- **simplicity first (kiss):** the end user is non-technical. one file, open it, and it works. no terminal, no docker.
+- **robustness:** handle network flakiness, crashes, and rate limits gracefully.
+- **code quality:** solid principles, dry, clean architecture.
 
-## 3. Technology Stack
-- **Runtime:** Electron (Main Process) + Node.js.
-- **Frontend:** React + Vite + TypeScript (Renderer Process).
-- **Language:** TypeScript (BOTH Main and Renderer). Strict mode (`strict: true`), no `any` types. **No Python.**
-- **Testing:** Playwright (End-to-End) and Vitest (Unit tests for pure functions).
-- **Tooling:** Husky pre-commit hooks running ESLint and Prettier.
-- **Core Dependency:** `slskd` (Soulseek Daemon) - managed as a child process.
+## 3. technology stack
+- **runtime:** electron (main process) + node.js.
+- **frontend:** react + vite + typescript (renderer process).
+- **language:** typescript (both main and renderer). strict mode (`strict: true`), no `any` types. **no python.**
+- **testing:** playwright (end-to-end) and vitest (unit tests for pure functions).
+- **tooling:** husky pre-commit hooks running eslint and prettier.
+- **core dependency:** `slskd` (soulseek daemon) - managed as a child process.
 
-## 4. Architecture (MVC)
-### Model (Data & Logic)
-- **Store:** `electron-store` or SQLite.
-- **State Management:** Zustand for global UI state.
-- **Services:**
-    - `SlskdService`: Binary lifecycle, config injection, health checks.
-    - `SpotifyService`: Oauth2 PKCE flow using **Embedded Window** for auto-closing login experience.
-    - `QueueService`: Ranking and prioritizing downloads.
+## 4. architecture (mvc)
+### model (data & logic)
+- **store:** `electron-store` or sqlite.
+- **state management:** zustand for global ui state.
+- **services:**
+    - `slskdservice`: binary lifecycle, config injection, health checks.
+    - `spotifyservice`: oauth2 pkce flow using **embedded window** for auto-closing login experience.
+    - `queueservice`: ranking and prioritizing downloads.
 
-### View (UI)
-- **Top Bar:** Configuration, Search (Cosmetic), Home.
-- **Sidebar:** Matrix-style Download Queue with **Clear** functionality and marquee text.
-- **Main View:** Playlist Grid (Images), Playlist Review (Table).
-- **Components:** Must implement React Error Boundaries and strict Accessibility (a11y) standards (ARIA labels, keyboard navigation).
-- **Styling:** Tailwind CSS (Dark/Matrix aesthetic).
+### view (ui)
+- **top bar:** configuration, search (cosmetic), home.
+- **sidebar:** matrix-style download queue with **clear** functionality and marquee text.
+- **main view:** playlist grid (images), playlist review (table).
+- **components:** must implement react error boundaries and strict accessibility (a11y) standards (aria labels, keyboard navigation).
+- **styling:** tailwind css (dark/matrix aesthetic).
 
-### Controller (Main Process)
-- **IPC Handlers:** Main orchestration. Frontend sends IPC messages (e.g., `download.start`), Main calls Services. Input payloads must be validated/sanitized.
+### controller (main process)
+- **ipc handlers:** main orchestration. frontend sends ipc messages (e.g., `download.start`), main calls services. input payloads must be validated/sanitized.
 
-### Security
-- **BrowserWindow:** `nodeIntegration: false` and `contextIsolation: true`.
-- **CSP:** Strict Content Security Policy in renderer.
+### security
+- **browserwindow:** `nodeintegration: false` and `contextisolation: true`.
+- **csp:** strict content security policy in renderer.
 
-## 5. Zero-Config Requirement
-1.  **Binary Management:**
-    - **Dev:** `scripts/download-binaries.ts` fetches platform-specific `slskd`.
-    - **Prod:** `electron-builder` bundles the OS-specific binary into `resources/`.
-    - `SlskdService` detects environment and paths automatically.
-2.  **Auto-Updates:**
-    - Silent background auto-updates via `electron-updater`.
-    - GitHub Actions pipeline for CI/CD (lint, test, build, release).
-3.  **Dynamic Configuration:**
-    - Find random free port.
-    - Generate temp `slskd.yml`.
-    - Launch `slskd` with this config.
-    - Never ask user for ports/keys.
+## 5. zero-config requirement
+1.  **binary management:**
+    - **dev:** `scripts/download-binaries.ts` fetches platform-specific `slskd`.
+    - **prod:** `electron-builder` bundles the os-specific binary into `resources/`.
+    - `slskdservice` detects environment and paths automatically.
+2.  **auto-updates:**
+    - silent background auto-updates via `electron-updater`.
+    - github actions pipeline for ci/cd (lint, test, build, release).
+3.  **dynamic configuration:**
+    - find random free port.
+    - generate temp `slskd.yml`.
+    - launch `slskd` with this config.
+    - never ask user for ports/keys.
 
-## 6. Development Workflow (TDD)
-1.  Define Requirement.
-2.  Write Playwright Test (fail).
-3.  Run & Fail.
-4.  Implement minimal code.
-5.  Refactor.
+## 6. development workflow (tdd)
+1.  define requirement.
+2.  write playwright test (fail).
+3.  run & fail.
+4.  implement minimal code.
+5.  refactor.
