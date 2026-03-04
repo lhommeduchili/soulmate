@@ -4,7 +4,8 @@ a desktop application that allows users to download audio from soulseek via a sp
 
 ## core features
 
-- spotify integration: authenticate with spotify to fetch playlists.
+- spotify login integration: authenticate with spotify to fetch private playlists.
+- spotify/youtube public playlists integration: fetch public playlists from spotify & youtube.
 - automated downloads: searches and downloads matching tracks from the soulseek network.
 - bundled daemon: manages its own instance of `slskd` without requiring external configuration.
 
