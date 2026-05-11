@@ -1,0 +1,136 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# soulmate — Release Pipeline
+# ──────────────────────────────────────────────────────────────────────────────
+# Triggered by pushing a version tag (e.g. `git tag v1.1.0 && git push origin v1.1.0`).
+# Builds platform-specific artifacts and creates a draft GitHub Release.
+#
+# Signing:
+#   - macOS: ad-hoc signed by default (identity: "-" in electron-builder.yml).
+#     Set APPLE_ID, APPLE_ID_PASSWORD, and APPLE_TEAM_ID secrets for notarization (tier 2).
+#   - Windows/Linux: no signing required.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # ── macOS ─────────────────────────────────────────────────────────────────
+  build-mac:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: install dependencies
+        run: npm ci
+
+      - name: download slskd binaries
+        run: npm run binaries:download
+
+      - name: build macOS (${{ matrix.arch }})
+        run: npm run build && npx electron-builder --mac --${{ matrix.arch }}
+        env:
+          # Tier 2 notarization (optional — only if secrets are configured)
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-${{ matrix.arch }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          if-no-files-found: error
+
+  # ── Linux ─────────────────────────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: install dependencies
+        run: npm ci
+
+      - name: download slskd binaries
+        run: npm run binaries:download
+
+      - name: build Linux
+        run: npm run build:linux
+
+      - name: upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  # ── Windows ───────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: install dependencies
+        run: npm ci
+
+      - name: download slskd binaries
+        run: npm run binaries:download
+
+      - name: build Windows
+        run: npm run build:win
+
+      - name: upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-x64
+          path: dist/*.exe
+          if-no-files-found: error
+
+  # ── Release ───────────────────────────────────────────────────────────────
+  release:
+    needs: [build-mac, build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: list release assets
+        run: find artifacts -type f | sort
+
+      - name: create GitHub Release (draft)
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+            artifacts/**/*.AppImage
+            artifacts/**/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

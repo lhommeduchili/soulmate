@@ -8,7 +8,7 @@ files:
   - out
   - package.json
 
-afterSign: scripts/notarize.js
+afterSign: scripts/afterSign.js
 
 # Protocol Handler
 protocols:
@@ -21,8 +21,7 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   hardenedRuntime: true
-  gatekeeperAssess: false
-  identity: "soulmate self-sign"
+  identity: "-"
   target:
     - target: dmg
       arch:
