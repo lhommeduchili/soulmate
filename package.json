@@ -1,6 +1,6 @@
 {
   "name": "soulmate",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "productName": "soulmate",
   "description": "A high-quality, zero-configuration Soulseek client for DJs.",
   "main": "./out/main/index.js",
