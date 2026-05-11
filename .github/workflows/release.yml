@@ -57,6 +57,7 @@ jobs:
             dist/*.zip
             !dist/*.blockmap
           if-no-files-found: error
+          compression-level: 0
 
   # ── Linux ─────────────────────────────────────────────────────────────────
   build-linux:
@@ -83,6 +84,7 @@ jobs:
           name: linux-x64
           path: dist/*.AppImage
           if-no-files-found: error
+          compression-level: 0
 
   # ── Windows ───────────────────────────────────────────────────────────────
   build-windows:
@@ -109,6 +111,7 @@ jobs:
           name: win-x64
           path: dist/*.exe
           if-no-files-found: error
+          compression-level: 0
 
   # ── Release ───────────────────────────────────────────────────────────────
   release:
