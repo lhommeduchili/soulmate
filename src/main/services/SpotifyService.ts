@@ -5,6 +5,7 @@ import { URL } from "url";
 import { Playlist, Track } from "../../shared/types";
 import log from "../utils/logger";
 import { PreferencesService } from "./PreferencesService";
+import { getMainEnv } from "../config/env";
 
 interface SpotifyPaging<T> {
   items: T[];
@@ -22,9 +23,9 @@ export class SpotifyService {
 
   constructor(preferencesService: PreferencesService) {
     this.preferencesService = preferencesService;
-    this.clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID || "";
+    this.clientId = getMainEnv("VITE_SPOTIFY_CLIENT_ID");
     if (!this.clientId) {
-      console.error("[SpotifyService] Missing VITE_SPOTIFY_CLIENT_ID");
+      log.error("[SpotifyService] Missing VITE_SPOTIFY_CLIENT_ID");
     }
   }
 
@@ -60,6 +61,12 @@ export class SpotifyService {
   }
 
   async login(): Promise<boolean> {
+    if (!this.clientId) {
+      throw new Error(
+        "Spotify is not configured in this build (missing VITE_SPOTIFY_CLIENT_ID).",
+      );
+    }
+
     this.codeVerifier = this.generateRandomString(128);
     const challenge = await this.generateCodeChallenge(this.codeVerifier);
     const scope = "user-read-private user-read-email playlist-read-private";

@@ -24,6 +24,8 @@ jobs:
   # ── macOS ─────────────────────────────────────────────────────────────────
   build-mac:
     runs-on: macos-latest
+    env:
+      VITE_SPOTIFY_CLIENT_ID: ${{ secrets.VITE_SPOTIFY_CLIENT_ID }}
     strategy:
       matrix:
         arch: [x64, arm64]
@@ -62,6 +64,8 @@ jobs:
   # ── Linux ─────────────────────────────────────────────────────────────────
   build-linux:
     runs-on: ubuntu-latest
+    env:
+      VITE_SPOTIFY_CLIENT_ID: ${{ secrets.VITE_SPOTIFY_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -89,6 +93,8 @@ jobs:
   # ── Windows ───────────────────────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
+    env:
+      VITE_SPOTIFY_CLIENT_ID: ${{ secrets.VITE_SPOTIFY_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
 

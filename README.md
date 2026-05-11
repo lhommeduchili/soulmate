@@ -22,6 +22,10 @@ cd soulmate
 # install dependencies
 npm install
 
+# configure local environment
+cp .env.example .env
+# then edit .env and set VITE_SPOTIFY_CLIENT_ID
+
 # fetch os-specific slskd binaries
 npm run binaries:download
 
@@ -31,6 +35,8 @@ npm run dev
 # build release (mac)
 npm run build:mac
 ```
+
+for github actions releases, define `VITE_SPOTIFY_CLIENT_ID` in repository secrets so the packaged app includes spotify oauth configuration.
 
 ## documentation
 
