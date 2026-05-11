@@ -55,6 +55,7 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.zip
+            !dist/*.blockmap
           if-no-files-found: error
 
   # ── Linux ─────────────────────────────────────────────────────────────────
@@ -128,9 +129,9 @@ jobs:
           draft: true
           generate_release_notes: true
           files: |
-            artifacts/**/*.dmg
-            artifacts/**/*.zip
-            artifacts/**/*.AppImage
-            artifacts/**/*.exe
+            artifacts/*.dmg
+            artifacts/*.zip
+            artifacts/*.AppImage
+            artifacts/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
