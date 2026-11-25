@@ -18,12 +18,12 @@ VERSION="${SOULMATE_VERSION:-latest}"
 
 # Terminal styling (plain fallback when stdout is not a TTY)
 if [ -t 1 ]; then
-  BOLD="\033[1m"
-  DIM="\033[2m"
-  GREEN="\033[38;2;101;214;133m"
-  RED="\033[38;2;192;154;159m"
-  BONE="\033[38;2;215;208;195m"
-  RESET="\033[0m"
+  BOLD=$'\033[1m'
+  DIM=$'\033[2m'
+  GREEN=$'\033[38;2;101;214;133m'
+  RED=$'\033[38;2;192;154;159m'
+  BONE=$'\033[38;2;215;208;195m'
+  RESET=$'\033[0m'
 else
   BOLD=""
   DIM=""
