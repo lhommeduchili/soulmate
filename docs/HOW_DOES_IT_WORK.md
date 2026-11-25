@@ -1,116 +1,53 @@
-# soulmate: system architecture & workflow audit
+# soulmate: system architecture & workflow overview
 
 ## 1. core architecture (mvc-electron)
 
-the application uses an **electron main process** as the central controller, orchestrating communication between the ui (renderer) and the backend services.
+the application uses an **electron main process** as the central controller, orchestrating communication between the sandboxed react renderer and backend services over zod-validated ipc.
 
-- **frontend (renderer)**: react + typescript. sends commands via ipc (e.g., `spotify:login`, `queue:start`).
-- **backend (main)**: node.js. hosts modular services.
-    - **controller**: `ipcmain` handlers in `index.ts`.
-    - **model/services**: 
-        - `spotifyservice`: auth & data fetching.
-        - `queueservice`: search, matching, download orchestration.
-        - `slskdservice`: manages the soulseek daemon process.
-        - `slskdclient`: http client for the daemon api.
-    - **error handling**: uses structured error classes (e.g., `apperror`) mapped to ui responses via ipc. persistent logging via `electron-log`.
+- **frontend (renderer):** react + vite + typescript in a sandboxed `BrowserWindow` (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`). communicates exclusively through the scoped `window.api` preload bridge.
+- **controller (main ipc):** `ipcMain.handle` handlers in `src/main/index.ts`, validating every payload with `zod` schemas (`src/shared/schemas.ts`, `src/shared/preferences.ts`).
+- **model / services (`src/main/services/`):**
+  - `SlskdService`: manages the bundled `slskd` daemon lifecycle, loopback-only config (`127.0.0.1`, `0600` permissions, 256-bit api key), and zero-shell zombie cleanup (`execFile`/`execFileSync`).
+  - `SlskdClient`: typed loopback http client (`127.0.0.1`) for `slskd` api v0 with sqlite `search.db` fallback.
+  - `SpotifyService`, `YoutubeService`, `SoundCloudService`, `BandcampService`: zero-login public ingestion with 5-minute ttl caching and optional spotify oauth pkce sync.
+  - `QueueService` & `QueuePersistence`: concurrent download orchestration, 3-tier search query expansion cascade (`MatchMaker`), stalled-transfer auto-failover, manual peer selection, inline query retry, bandwidth throttling, and crash-safe persistence.
+  - `AudioInspection`: binary flac/mp3 header verification, camelot key & bpm extraction, and 1024-point fft fake-lossless transcode detection.
+  - `MetadataService`: native flac vorbis comment + picture injection, mp3 id3v2 tagging, replaygain 2.0 / ebu r128 loudness tags, and atomic dj folder organization.
+  - `LibraryService`, `PlaylistExportService`, `CrateExportService`: local duplicate detection and exports for `.m3u8`, pioneer rekordbox xml, serato `.crate` binary subcrates, and native instruments traktor pro `.nml`.
+  - `UpdateService`: silent background updates from github releases via `electron-updater`.
+- **security & errors (`src/main/utils/`):** `security.ts` (ssrf guards, symlink-safe path containment, `safeStorage` credential encryption), `AppError.ts` (path/credential-redacting ipc errors), and `logger.ts` (`electron-log`).
 
-## 2. dependency: `slskd`
-the app manages a child process `slskd` (soulseek daemon).
-- **startup**: `slskdservice` spawns the binary from `resources/`.
-- **config**: a temporary `slskd.yml` is generated at runtime with random ports and api keys.
-- **fixes**: on macos, `xattr -d com.apple.quarantine` is run to unblock execution, and `slskd_web__contentpath` is explicitly set to ensure the daemon finds its web assets.
+## 2. bundled daemon (`slskd`)
 
----
+- **startup:** `SlskdService` locates the platform binary in `resources/` (dev) or `process.resourcesPath` (packaged), ensures executable permissions and removes macos quarantine via argument-array `execFileSync` (never shell strings).
+- **dynamic config:** selects free random tcp/udp ports, generates a 32-byte api key and encrypted soulseek credentials (stored via `safeStorage`), and writes `slskd.yml` with `mode: 0o600` bound strictly to `127.0.0.1`.
+- **shutdown:** cleanly kills the child process on `before-quit`, `SIGTERM`, and `SIGINT`.
 
-## 3. workflow: downloading an account playlist
+## 3. zero-login multi-platform ingestion
 
-this flow occurs when a user logs in via spotify and selects one of their own playlists.
+users paste any public url into `TopBar` or import a dj setlist without logging in:
 
-### step 3.1: authentication
-1. user clicks "login".
-2. `spotifyservice.login()` opens a `browserwindow` to `accounts.spotify.com`.
-3. **pkce flow**: app generates `code_verifier` and `code_challenge`.
-4. user authorizes. spotify redirects to `soulmate://callback?code=...`.
-5. `index.ts` captures the deep link and calls `spotifyservice.handlecallback(url)`.
-6. app exchanges the authorization code for an access token. token is stored in `electron-store`.
+1. **spotify (`spotifyParser.ts`):** 3-tier cascade — embed html -> open web player `initialState` -> oembed fallback (playlists, albums, single tracks).
+2. **youtube (`YoutubeService.ts`):** playlist and single-video ingestion with oembed & watch-page fallback.
+3. **soundcloud (`soundCloudParser.ts`):** `window.__sc_hydration` extraction with high-res `500x500` artwork normalization and oembed fallback.
+4. **bandcamp (`bandcampParser.ts`):** schema.org json-ld + `data-tralbum` extraction supporting custom domains.
+5. **dj setlists (`setlistParser.ts`):** parses rekordbox, traktor, serato csv/tsv/txt exports and plaintext setlists into reviewable track tables.
+6. **optional spotify oauth:** available inside settings modal using cryptographic `crypto.randomBytes` pkce + csrf `state` verification in a sandboxed auth window via `soulmate://callback`.
 
-### step 3.2: fetching metadata
-1. renderer calls `spotify:playlists`.
-2. `spotifyservice` triggers `net fetch` to `https://api.spotify.com/v1/me/playlists`.
-3. user selects a playlist. renderer calls `spotify:tracks`.
-4. service follows pagination (`next` link) to fetch **all** tracks json from spotify api.
+## 4. search, matching, download & failover pipeline
 
-### step 3.3: processing & queuing
-1. renderer sends the final list of tracks to `queue:start`.
-2. `queueservice` adds items to its in-memory queue (`map<string, downloaditem>`).
-3. the queue processing loop (`processqueue`) picks up 'pending' items sequentially.
+1. **search cascade (`MatchMaker.ts`):** tries tier 1 (exact `Artist Title`), then tier 2 (stripped remix/remaster tags), then tier 3 (minimalist primary artist + title) if enabled.
+2. **hybrid result retrieval:** polls `slskd` api v0 and falls back to read-only sqlite inspection of `search.db` when large result sets return empty json arrays.
+3. **ranking:** scores relevance (artist + title + album, remix mismatch penalties), enforces format priority (default: `aiff`, `wav`, `flac`, `mp3` >= 320 kbps), prefers free upload slots, higher bitrate, and shorter queues.
+4. **stalled failover & manual overrides:** detects frozen peers (0 B/s > 30s or remote abort) and fails over to the next best cached peer automatically; users can also edit queries inline or choose peers manually in `PeerSelectionModal`.
 
----
+## 5. post-download audiophile pipeline & exports
 
-## 4. workflow: downloading a public playlist (guest mode)
+1. **inspect (`AudioInspection.ts`):** verifies container specs (bit depth, sample rate, bitrate), extracts camelot key & bpm, and flags suspected upsampled fake-lossless transcodes via fft cutoff analysis.
+2. **organize & tag (`MetadataService.ts`):** atomically moves the file into `<DownloadDir>/<Artist>/<Album>/<TrackNumber> - <Title>.<ext>`, fetches https-validated album art (10 mb cap), computes replaygain 2.0 tags, and writes flac vorbis comments or mp3 id3v2 tags.
+3. **preview & export:** users can audition tracks in-app over the path-confined `soulmate-media://` protocol and export `.m3u8`, rekordbox xml, serato `.crate`, or traktor `.nml` files.
 
-this flow occurs when a user pastes a spotify url without being logged in.
+## 6. distribution & macos curl installer
 
-### step 4.1: url parsing
-1. user pastes `https://open.spotify.com/playlist/...`.
-2. `spotifyservice.getplaylist(url)` detects the url format and extracts the playlist id.
-
-### step 4.2: scraping fallback
-since no access token is available, the app uses a **scraping strategy**:
-
-#### metadata (title/image)
-- fetches the public playlist html page.
-- parses `<meta property="og:title">` and `<meta property="og:image">`.
-
-#### tracks (the "matrix" parser)
-- `spotifyservice.scrapeplaylisttracks()` fetches the html.
-- **regex parsing**:
-    - scans for track links (`<a href="/track/id">...</a>`).
-    - creates "chunks" of html between track matches.
-    - within each chunk, regex-scans for **artist name** (looking for `class="subdued"` or `/artist/` links) and **album name**.
-    - this constructs a `track` object (name, artist, album) *without* needing an api key.
-
-### step 4.3: processing
-- the scraped tracks are sent to `queue:start`. the rest of the flow is identical to the authenticated path.
-
----
-
-## 5. the search & matching algorithm
-
-once a track is queued, `queueservice` attempts to find it on soulseek.
-
-### step 5.1: search execution
-1. `queueservice` constructs a query: `"{artist name} {track name}"`.
-2. `slskdclient` posts this to the daemon (`/api/v0/searches`).
-
-### step 5.2: polling & database fallback
-1. app polls `/api/v0/searches/{id}` for results.
-2. **hybrid check**: if the api returns 0 responses but indicates files were found (common `slskd` quirk with large result sets), the app **directly reads the `search.db` sqlite database** generated by the daemon to retrieve the raw file list.
-
-### step 5.3: strict matching logic (the "audit" core)
-the app filters the raw results to find a single best file.
-
-**phase 1: relevance scoring (song identity)**
-for each candidate file, a score is calculated:
-- **+100 points**: filename contains normalized artist name. (required)
-- **+100 points**: filename contains normalized track name. (required)
-- **+50 points**: filename contains normalized album name.
-- **-40 points (penalty)**: filename contains "remix", "mix", "live", "cover", etc., but the requested track *does not*.
-
-**phase 2: strict quality filter**
-files are **rejected** if they do not meet these criteria, regardless of score:
-- **format**: must be `flac`, `wav`, `aiff`, or `mp3`.
-- **bitrate**: if `mp3`, must be **>= 320kbps**.
-
-**phase 3: sorting**
-candidates are ranked by:
-1. **relevance score (descending)** (strict identity first).
-2. **format priority** (flac > wav > aiff > mp3).
-3. **availability** (has free slots).
-4. **bitrate** (higher is better).
-5. **queue length** (shorter is better).
-
-### step 5.4: download
-1. the top candidate (best match) is selected.
-2. `slskdclient` sends a post to `/transfers/downloads/{username}`.
-3. the app monitors the transfer status until completion.
+- pushing a `v*` tag triggers `.github/workflows/release.yml`, building macos (`arm64` & `x64`), linux (`AppImage`), and windows (`nsis`), generating `SHA256SUMS.txt`, and publishing a github release.
+- macos users install in one command via `curl -fsSL https://raw.githubusercontent.com/lhommeduchili/soulmate/main/install.sh | bash`, which verifies `SHA256SUMS.txt`, extracts via `ditto`, installs into `/Applications`, and clears `com.apple.quarantine`.

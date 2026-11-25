@@ -1,12 +1,14 @@
-import { defineConfig } from '@playwright/test'
+import { defineConfig } from "@playwright/test";
+
+process.env.PLAYWRIGHT_TEST = "true";
 
 export default defineConfig({
-    testDir: './tests',
-    timeout: 30000,
-    retries: 0,
-    workers: 1,
-    use: {
-        trace: 'on-first-retry',
-    },
-    outputDir: 'test-results/',
-})
+  testDir: "./tests",
+  timeout: 30000,
+  retries: 0,
+  workers: 1,
+  use: {
+    trace: "on-first-retry",
+  },
+  outputDir: "test-results/",
+});

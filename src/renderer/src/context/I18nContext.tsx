@@ -35,3 +35,12 @@ export function useI18n(): I18nContextValue {
   }
   return context;
 }
+
+export function useSafeI18n(): I18nContextValue {
+  const context = useContext(I18nContext);
+  if (context) return context;
+  return {
+    locale: "en",
+    t: (key, values) => translate("en", key, values),
+  };
+}

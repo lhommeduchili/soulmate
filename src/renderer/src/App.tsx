@@ -9,17 +9,19 @@ import { useSoulseek } from "./hooks/useSoulseek";
 import { PreferencesProvider } from "./context/PreferencesContext";
 import { I18nProvider, useI18n } from "./context/I18nContext";
 
+import { AudioPlayerProvider } from "./context/AudioPlayerContext";
+
 import { LoginPage } from "./pages/LoginPage";
 import { PlaylistsPage } from "./pages/PlaylistsPage";
 import { ReviewPage } from "./pages/ReviewPage";
 
 function AppContent(): JSX.Element {
-  const { isConnected: isSoulseekConnected } = useSoulseek();
+  const { isReady } = useSoulseek();
   const { t } = useI18n();
 
   return (
     <Layout>
-      {!isSoulseekConnected && (
+      {!isReady && (
         <div className="fixed inset-0 z-50 pointer-events-none">
           <div className="pointer-events-auto h-full w-full">
             <LoadingOverlay text={t("loading.connectingSoulseek")} />
@@ -63,15 +65,17 @@ function App(): JSX.Element {
     <ErrorBoundary>
       <PreferencesProvider>
         <I18nProvider>
-          <SpotifyAuthProvider>
-            <LibraryProvider>
-              <HashRouter>
-                <ErrorBoundary>
-                  <AppContent />
-                </ErrorBoundary>
-              </HashRouter>
-            </LibraryProvider>
-          </SpotifyAuthProvider>
+          <AudioPlayerProvider>
+            <SpotifyAuthProvider>
+              <LibraryProvider>
+                <HashRouter>
+                  <ErrorBoundary>
+                    <AppContent />
+                  </ErrorBoundary>
+                </HashRouter>
+              </LibraryProvider>
+            </SpotifyAuthProvider>
+          </AudioPlayerProvider>
         </I18nProvider>
       </PreferencesProvider>
     </ErrorBoundary>

@@ -33,8 +33,10 @@ export function PreferencesProvider({
   useEffect(() => {
     let isMounted = true;
 
-    window.api.settings
-      .getPreferences()
+    const getPrefs =
+      window.api.preferences?.get ?? window.api.settings.getPreferences;
+
+    getPrefs()
       .then((nextPreferences: AppPreferences) => {
         if (isMounted) {
           setPreferences(nextPreferences);
@@ -64,8 +66,9 @@ export function PreferencesProvider({
       preferences,
       isLoadingPreferences,
       updatePreferences: async (nextPreferences) => {
-        const updatedPreferences =
-          await window.api.settings.updatePreferences(nextPreferences);
+        const updatePrefs =
+          window.api.preferences?.set ?? window.api.settings.updatePreferences;
+        const updatedPreferences = await updatePrefs(nextPreferences);
         setPreferences(updatedPreferences);
         return updatedPreferences;
       },

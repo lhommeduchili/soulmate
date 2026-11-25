@@ -1,39 +1,48 @@
-import { z } from "zod";
+import {
+  AppLocale,
+  AppLocaleSchema,
+  AppRegion,
+  AppRegionSchema,
+  FormatPriority,
+  FormatPrioritySchema,
+  PartialUserPreferencesSchema,
+  UserPreferences,
+  UserPreferencesSchema,
+} from "./schemas";
 
-export const appLocaleSchema = z.enum(["es-CL", "en"]);
-export const appRegionSchema = z.enum(["CL"]);
+export const appLocaleSchema = AppLocaleSchema;
+export const appRegionSchema = AppRegionSchema;
+export const formatPrioritySchema = FormatPrioritySchema;
 
-export type AppLocale = z.infer<typeof appLocaleSchema>;
-export type AppRegion = z.infer<typeof appRegionSchema>;
-
-export interface AppPreferences {
-  downloadPath: string;
-  formatPriority: string[];
-  locale: AppLocale;
-  region: AppRegion;
-}
+export type { AppLocale, AppRegion, FormatPriority };
+export type AppPreferences = UserPreferences;
 
 export const DEFAULT_PREFERENCES: AppPreferences = {
   downloadPath: "",
-  formatPriority: ["aiff", "wav", "flac", "mp3"],
+  formatPriority: "flac",
   locale: "es-CL",
   region: "CL",
+  maxConcurrentDownloads: 2,
+  autoQueryCascade: true,
+  downloadSpeedLimit: 0,
+  enableReplayGain: true,
 };
 
-export const preferencesSchema = z.object({
-  downloadPath: z.string(),
-  formatPriority: z.array(z.string().min(1)).min(1),
-  locale: appLocaleSchema,
-  region: appRegionSchema,
-});
-
-export const partialPreferencesSchema = preferencesSchema.partial();
+export const preferencesSchema = UserPreferencesSchema;
+export const partialPreferencesSchema = PartialUserPreferencesSchema;
 
 export function mergePreferences(
-  preferences: Partial<AppPreferences>,
+  preferences?: Partial<AppPreferences> | null,
 ): AppPreferences {
-  return preferencesSchema.parse({
+  const raw: Record<string, unknown> = {
     ...DEFAULT_PREFERENCES,
-    ...preferences,
-  });
+    ...(preferences || {}),
+  };
+
+  // Gracefully migrate legacy array formatPriority to new enum
+  if (Array.isArray(raw.formatPriority)) {
+    raw.formatPriority = "flac";
+  }
+
+  return preferencesSchema.parse(raw);
 }

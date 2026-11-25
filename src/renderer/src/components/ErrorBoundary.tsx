@@ -1,51 +1,95 @@
-import { Component, ErrorInfo, ReactNode } from 'react'
+import { Component, ErrorInfo, ReactNode } from "react";
+import { PageErrorFallback } from "./PageErrorFallback";
 
-interface Props {
-    children: ReactNode;
-    fallback?: ReactNode;
+export interface ErrorBoundaryProps {
+  children: ReactNode;
+  fallback?: ReactNode | ((error: Error, reset: () => void) => ReactNode);
+  componentName?: string;
+  onReset?: () => void;
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
 }
 
-interface State {
-    hasError: boolean;
-    error?: Error;
+export interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-    public state: State = {
-        hasError: false
+export function createInitialErrorBoundaryState(): ErrorBoundaryState {
+  return { hasError: false, error: undefined };
+}
+
+export function createErrorState(error: Error): ErrorBoundaryState {
+  return { hasError: true, error };
+}
+
+export function resolveErrorFallbackMessage(
+  error: unknown,
+  fallback: string = "Unknown error",
+): string {
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error;
+  }
+  if (error && typeof error === "object" && "message" in error) {
+    const msg = (error as { message: unknown }).message;
+    if (typeof msg === "string" && msg.trim().length > 0) {
+      return msg;
+    }
+  }
+  return fallback;
+}
+
+export class ErrorBoundary extends Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
+  public state: ErrorBoundaryState = createInitialErrorBoundaryState();
+
+  public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return createErrorState(error);
+  }
+
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    if (this.props.onError) {
+      this.props.onError(error, errorInfo);
+    }
+    console.error(
+      `[ErrorBoundary:${this.props.componentName || "root"}] Uncaught error:`,
+      error,
+      errorInfo,
+    );
+  }
+
+  public reset = () => {
+    if (this.props.onReset) {
+      this.props.onReset();
+    }
+    this.setState({ hasError: false, error: undefined });
+  };
+
+  public render() {
+    if (this.state.hasError) {
+      const error = this.state.error || new Error("Unknown error");
+
+      if (typeof this.props.fallback === "function") {
+        return this.props.fallback(error, this.reset);
+      }
+
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+
+      return (
+        <PageErrorFallback
+          page={this.props.componentName || "application"}
+          error={error}
+          onRetry={this.reset}
+        />
+      );
     }
 
-    public static getDerivedStateFromError(error: Error): State {
-        // Update state so the next render will show the fallback UI.
-        return { hasError: true, error }
-    }
-
-    public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-        console.error('Uncaught error:', error, errorInfo)
-    }
-
-    public render() {
-        if (this.state.hasError) {
-            if (this.props.fallback) {
-                return this.props.fallback
-            }
-            return (
-                <div className="flex flex-col items-center justify-center h-screen bg-[#0E0E0E] text-[#B0B0B0] p-8">
-                    <h1 className="text-2xl font-bold text-red-500 mb-4">Something went wrong.</h1>
-                    <div className="bg-black/50 p-4 rounded-md overflow-auto max-w-full text-sm font-mono border border-white/10">
-                        {this.state.error?.message || 'Unknown Error'}
-                    </div>
-                    <button
-                        onClick={() => window.location.reload()}
-                        className="mt-6 px-4 py-2 bg-white/10 hover:bg-white/20 rounded transition-colors"
-                        aria-label="Reload application"
-                    >
-                        Reload
-                    </button>
-                </div>
-            )
-        }
-
-        return this.props.children
-    }
+    return this.props.children;
+  }
 }

@@ -1,72 +1,50 @@
-# manual testing guide - soulmate phase 3
+# manual testing guide - soulmate v2.0.0
 
-this guide allows you to verify the full "search & queue" workflow of the application.
+this guide covers manual verification of soulmate's zero-login ingestion, download pipeline, dj exports, security controls, and macos `curl` installer.
 
-## prerequisites
-1.  **spotify app creds:** ensure you have `vite_spotify_client_id` in your `.env`.
-2.  **spotify account:** you need a valid spotify account to log in.
+## 1. development launch
 
-## step-by-step verification
-
-### 1. launch the application
-run the development server. this starts the main process (electron) and renderer (react).
 ```bash
+npm install
+npm run binaries:download
 npm run dev
 ```
-> **verify:** the app window opens with the "soulmate v2.0" header and the "system_disconnected" status.
 
-### 2. configure priority (pre-login)
-on the login screen, you will see a **quality priority** selector.
-1.  **action:** use the arrows (▲/▼) to reorder the formats (e.g., move `mp3` to the top).
-2.  **verify:** the order updates instantly. this preference is saved in the background.
+- **verify:** the app launches with the frameless dark critical-nocturne window, macos dock label `soulmate`, squircle icon, and `slskd` connecting in the background (`SYSTEM_ONLINE`).
 
-### 3. authenticate
-1.  **action:** click the "login with spotify" button.
-2.  **action:** your browser will open. accept the permissions.
-3.  **verify:**
-    - browser redirects to `soulmate://callback...`.
-    - app comes to foreground.
-    - view switches to the **playlist selector** grid.
-    - header status changes to "system_online".
+## 2. zero-login ingestion (spotify, youtube, soundcloud, bandcamp & setlists)
 
-### 4. select a playlist
-1.  **action:** click on any playlist card (e.g., "discover weekly").
-2.  **verify:**
-    - view switches to the **playlist review** table.
-    - tracks are loaded (you might see a brief "loading..." or "decrypting..." state).
-    - all tracks are selected by default.
+1. paste a public spotify playlist, album, or track url into the top search bar and press enter.
+   - **verify:** review table loads with `32x32` square track artwork, `[SPOTIFY]` playlist header badge, and `[IN LIBRARY]` badges for any tracks already in your download directory.
+2. test a public youtube playlist/video url, soundcloud set/track url, and bandcamp album/track url.
+3. click the setlist import button, paste a rekordbox/1001tracklists tracklist (or drop a `.csv`/`.txt` file), and confirm track count telemetry and review hydration.
 
-### 5. review & queue
-1.  **action:** uncheck one track.
-2.  **action:** click "download selected".
-3.  **verify:**
-    - an alert confirms the number of queued tracks.
-    - **check terminal logs:** look for `[queueservice] searching for: ...`.
-    - note: since we are using a dummy `slskd` binary in dev, the actual search will log "search initiated" but might not return results. this confirms the *request logic* is working.
+## 3. queue, telemetry, preview & exports
 
-## troubleshooting
-- **login doesn't redirect?** ensure you registered `soulmate://callback` in your spotify dashboard.
-- **no playlists?** check the terminal for `[spotifyservice] error`. ensure your account has public playlists.
+1. select tracks and click download; verify real-time ascii progress meters (`░`/`█`), speed readout, pause/resume all, and clear completed controls.
+2. test keyboard cell editing (`Enter`/`Space` to edit, `Escape` to cancel, `Enter` to save) and settings modal accessibility (`Tab` focus trap, `Escape` close, focus restoration).
+3. on a completed track:
+   - verify format badge (e.g. `[16-BIT / 44.1kHz]`), camelot/bpm badge when present, and reveal-in-folder action.
+   - click preview to open the bottom audio player; verify `Space` play/pause and `Escape` dismiss.
+4. export `.m3u8`, rekordbox xml, serato `.crate`, and traktor `.nml` from the review toolbar and confirm files are created inside your configured download directory.
 
-### 6. queue management (new features)
-1.  **marquee text:**
-    - **action:** queue a song with a very long title.
-    - **verify:** hovering over the text causing it to scroll horizontally (marquee effect).
-2.  **clear queue:**
-    - **action:** hover over the "download queue" header.
-    - **verify:** a "clear" button appears on the right.
-    - **action:** click "clear".
-    - **verify:** the queue empties immediately (no confirmation popup).
+## 4. optional spotify oauth (settings)
 
-## phase 4: packaging verification
-1.  **build the app:**
-    ```bash
-    npm run binaries:download
-    npm run build:mac
-    ```
-2.  **inspect extensions:**
-    - navigate to `dist/mac-arm64/soulmate.app/contents/resources/`.
-    - **verify:** `slskd` binary is present (~117mb).
-3.  **run the artifact:**
-    - open `dist/mac-arm64/soulmate.app`.
-    - **verify:** app opens, connects (system_online), and performs similarly to dev mode.
+1. ensure `VITE_SPOTIFY_CLIENT_ID` is set in `.env` and `soulmate://callback` is registered in the spotify developer dashboard.
+2. open settings -> connect spotify -> authorize in the sandboxed oauth window -> confirm private playlists load.
+
+## 5. packaging & macos curl installer verification
+
+1. **local build:**
+   ```bash
+   npm run build:mac
+   open dist/mac-arm64/soulmate.app
+   ```
+2. **curl installer (after publishing a github release):**
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/lhommeduchili/soulmate/main/install.sh | bash
+   open -a soulmate
+   ```
+
+   - **verify:** architecture is auto-detected, `SHA256SUMS.txt` is verified, `soulmate.app` is installed into `/Applications` (or `~/Applications`), quarantine is cleared, and the app opens cleanly without gatekeeper errors.

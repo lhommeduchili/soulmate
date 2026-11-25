@@ -48,6 +48,7 @@ test.describe("Settings accessibility", () => {
     await expect(dialog).toHaveAttribute("aria-modal", "true");
 
     await expect(page.getByTestId("settings-close-button")).toBeFocused();
+    await page.waitForTimeout(50);
 
     await page.keyboard.press("Tab");
     await expect(page.getByTestId("downloads-directory-button")).toBeFocused();

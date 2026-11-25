@@ -14,7 +14,7 @@ export function LoginPage() {
   return (
     <div className="flex flex-col items-center justify-center h-full space-y-8">
       <LoginButton onClick={login} />
-      <div className="text-zinc-500 font-mono text-sm">
+      <div className="text-app-text-dim font-mono text-sm lowercase">
         {t("login.connectPrompt")}
       </div>
     </div>

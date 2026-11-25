@@ -110,13 +110,9 @@ async function main() {
 
         // Sign macOS binaries
         if (plat.name.startsWith("darwin")) {
-          console.log(
-            `[Binaries] Ad-hoc signing ${plat.name}...`,
-          );
+          console.log(`[Binaries] Ad-hoc signing ${plat.name}...`);
           try {
-            execSync(
-              `codesign --force --sign "-" "${finalBinaryPath}"`,
-            );
+            execSync(`codesign --force --sign "-" "${finalBinaryPath}"`);
             console.log(`[Binaries] Successfully signed ${plat.name}`);
           } catch (signError) {
             console.error(`[Binaries] Failed to sign ${plat.name}:`, signError);

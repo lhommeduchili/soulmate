@@ -4,22 +4,116 @@
 
 :root {
   color-scheme: dark;
+  --color-void: #000000;
+  --color-carbon: #08080a;
+  --color-oxblood: #36111d;
+  --color-crimson: #8e3948;
+  --color-rose: #c09a9f;
+  --color-bone: #d7d0c3;
+  --color-silver: #a9a19a;
+  --color-silver-dim: #8f8790;
+  --color-phosphor: #65d685;
+  --color-cyan: #c5d7d4;
+  --color-line: rgba(215, 208, 195, 0.16);
+  --color-line-strong: rgba(215, 208, 195, 0.34);
+  --font-terminal:
+    "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+  --font-editorial:
+    "Fraunces", "Cormorant Garamond", "Iowan Old Style", Georgia,
+    "Times New Roman", serif;
 }
 
 body {
-  @apply bg-app-bg text-app-text-main font-sans antialiased;
-  /* Scrollbar styling */
+  background-color: var(--color-void);
+  color: var(--color-bone);
+  font-family: var(--font-terminal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--color-cyan);
+  color: var(--color-void);
+}
+
+/* Frameless Window Drag Regions */
+.app-drag {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag,
+button,
+input,
+select,
+textarea,
+a,
+label,
+[role="button"],
+[role="tab"],
+[role="search"],
+[role="dialog"] {
+  -webkit-app-region: no-drag;
+}
+
+/* Critical Nocturne Void & Oxblood/Cyan Background Substrate */
+.nocturne-ground {
+  background-color: #000000;
+  background-image:
+    linear-gradient(145deg, rgba(123, 31, 48, 0.14), transparent 38%),
+    radial-gradient(
+      circle at 75% 18%,
+      rgba(197, 215, 212, 0.06),
+      transparent 32rem
+    ),
+    linear-gradient(180deg, rgba(6, 6, 8, 0.96), rgba(0, 0, 0, 1));
+}
+
+/* Critical Nocturne / Transformer ASCII Progress Meter */
+.ascii-meter-text {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--font-terminal);
+  font-size: 0.72rem;
+  line-height: 1;
+  letter-spacing: 0;
+  user-select: none;
+}
+
+.ascii-meter-empty,
+.ascii-meter-filled {
+  display: block;
+  white-space: nowrap;
+}
+
+.ascii-meter-empty {
+  color: rgba(215, 208, 195, 0.22);
+}
+
+.ascii-meter-filled {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  overflow: hidden;
+  color: #65d685;
 }
 
 /* Custom Scrollbar for WebKit */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-app-surface;
+  background: var(--color-carbon);
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-app-surface-active rounded-full hover:bg-soul-green;
+  background: rgba(215, 208, 195, 0.2);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-phosphor);
 }

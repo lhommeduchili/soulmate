@@ -28,21 +28,24 @@ export function FormatSelector(): JSX.Element {
 
   return (
     <div className="flex flex-col items-center">
-      <div className="relative w-full flex items-center justify-center mb-4">
+      <div className="relative w-full flex items-center justify-center mb-3">
         <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t border-app-border" />
-        <h3 className="relative px-3 bg-app-surface text-soul-green/70 text-xs font-mono uppercase tracking-widest text-center">
+        <h3 className="relative px-3 bg-app-bg text-soul-green text-[11px] font-mono lowercase tracking-widest text-center">
           {t("format.title")}
         </h3>
       </div>
-      <div className="flex bg-app-surface/80 p-1 rounded-lg border border-app-border">
+      <div
+        data-testid="format-priority-list"
+        className="flex bg-app-surface p-1 rounded-none border border-app-border"
+      >
         {priority.map((fmt, idx) => (
           <div key={fmt} className="group relative flex items-center">
-            <div className="px-4 py-2 bg-app-bg border border-app-border rounded mx-1 text-app-text-muted font-mono text-sm uppercase group-hover:border-soul-green/50 group-hover:text-soul-green transition-colors cursor-default">
+            <div className="px-4 py-2 bg-app-bg border border-app-border rounded-none mx-0.5 text-app-text-muted font-mono text-xs lowercase group-hover:border-soul-green group-hover:text-soul-green transition-colors cursor-default">
               {fmt}
             </div>
 
             {/* Hover Controls */}
-            <div className="absolute inset-0 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity px-1 pointer-events-none">
+            <div className="absolute inset-0 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity px-0.5 pointer-events-none">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -51,7 +54,7 @@ export function FormatSelector(): JSX.Element {
                 disabled={idx === 0}
                 tabIndex={-1}
                 aria-label={t("format.moveLeft", { format: fmt.toUpperCase() })}
-                className="pointer-events-auto text-soul-green disabled:opacity-0 hover:bg-soul-green/20 rounded-full p-1"
+                className="pointer-events-auto text-soul-green disabled:opacity-0 hover:bg-soul-green hover:text-app-bg rounded-none p-0.5"
               >
                 <svg
                   className="w-3 h-3"
@@ -77,7 +80,7 @@ export function FormatSelector(): JSX.Element {
                 aria-label={t("format.moveRight", {
                   format: fmt.toUpperCase(),
                 })}
-                className="pointer-events-auto text-soul-green disabled:opacity-0 hover:bg-soul-green/20 rounded-full p-1"
+                className="pointer-events-auto text-soul-green disabled:opacity-0 hover:bg-soul-green hover:text-app-bg rounded-none p-0.5"
               >
                 <svg
                   className="w-3 h-3"
@@ -97,7 +100,7 @@ export function FormatSelector(): JSX.Element {
           </div>
         ))}
       </div>
-      <div className="text-[10px] text-app-text-dim mt-2 font-mono">
+      <div className="text-[10px] text-app-text-dim mt-2 font-mono lowercase">
         {t("format.highest")}
         <span className="mx-2">◄──────────►</span>
         {t("format.lowest")}

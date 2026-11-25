@@ -7,7 +7,7 @@ interface Props {
 export function LoadingOverlay({ text }: Props): JSX.Element {
   return (
     <div
-      className="fixed inset-0 z-50 bg-app-bg flex flex-col items-center justify-center p-8 text-center font-mono"
+      className="fixed inset-0 z-50 bg-app-bg nocturne-ground flex flex-col items-center justify-center p-8 text-center font-mono"
       role="status"
       aria-live="polite"
     >

@@ -9,6 +9,7 @@ we follow a strict test-driven development (tdd) approach, but we separate our t
 playwright is our primary tool for verifying user flows and the integration between the electron main process, the react renderer, and the background daemon (`slskd`).
 
 **when to use playwright:**
+
 - **user journeys:** completing flows like logging in, selecting a playlist, and initiating a queue.
 - **ipc integration:** testing that clicking a button correctly sends an ipc message that triggers a main process action.
 - **component rendering constraints:** ensuring elements appear exactly as required by specifications.
@@ -20,6 +21,7 @@ playwright is our primary tool for verifying user flows and the integration betw
 while playwright ensures the app works holistically, it is excessively slow for testing pure logic blocks (e.g., permutations of the search scoring algorithm). vitest is built for vite and runs instantly, making it perfect for our core logic.
 
 **when to use vitest:**
+
 - **pure functions:** functions that take an input and return an output without side effects (e.g., normalization strings).
 - **algorithms:** `queueservice` relevance scoring, bitrate comparison, and match prioritization.
 - **data transformations:** parsing scraped metadata from html chunks into standard `track` objects.

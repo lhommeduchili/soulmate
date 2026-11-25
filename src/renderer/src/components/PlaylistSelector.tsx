@@ -1,13 +1,8 @@
 import { useState, useEffect } from "react";
 import { MatrixText } from "./MatrixText";
 import { useI18n } from "../context/I18nContext";
-
-interface Playlist {
-  id: string;
-  name: string;
-  images: { url: string }[];
-  tracks: { total: number };
-}
+import { Playlist, Track } from "../../../shared/types";
+import { SetlistImportModal } from "./SetlistImportModal";
 
 interface Props {
   onSelect: (playlistId: string) => void;
@@ -18,22 +13,32 @@ interface Props {
   addedPlaylists?: Playlist[];
   onClearAdded?: () => void;
   onRemoveAdded?: (playlistId: string) => void;
+  onImportSetlist?: (playlist: Playlist, tracks: Track[]) => void;
 }
 
 export function PlaylistSelector({
   onSelect,
   isAuthenticated = false,
-  onLoginRequested,
   searchResults,
   isSearching,
   addedPlaylists = [],
   onClearAdded,
   onRemoveAdded,
+  onImportSetlist,
 }: Props): JSX.Element {
   const { t } = useI18n();
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isSetlistModalOpen, setIsSetlistModalOpen] = useState(false);
+
+  if (
+    typeof window !== "undefined" &&
+    (window as unknown as { __simulateComponentCrash?: string })
+      .__simulateComponentCrash === "playlists"
+  ) {
+    throw new Error("Simulated PlaylistSelector subsystem fault");
+  }
 
   // Fetch library on mount (only if authenticated)
   useEffect(() => {
@@ -78,91 +83,122 @@ export function PlaylistSelector({
 
   if (loading && !isShowingSearch)
     return (
-      <div className="fixed inset-0 z-50 bg-app-bg flex flex-col items-center justify-center p-8 text-center font-mono">
-        <div className="text-xl text-soul-green mb-2 lowercase tracking-tighter flex items-center">
+      <div className="fixed inset-0 z-50 bg-app-bg nocturne-ground flex flex-col items-center justify-center p-8 text-center font-mono">
+        <div className="text-xl text-soul-green mb-2 lowercase tracking-tight flex items-center">
           <style>{`
-                    @keyframes blink-cursor {
-                        0%, 100% { opacity: 1; }
-                        50% { opacity: 0; }
-                    }
-                    .blink-cursor {
-                        animation: blink-cursor 1s step-end infinite;
-                    }
-                `}</style>
+            @keyframes blink-cursor {
+              0%, 100% { opacity: 1; }
+              50% { opacity: 0; }
+            }
+            .blink-cursor {
+              animation: blink-cursor 1s step-end infinite;
+            }
+          `}</style>
           <MatrixText text={t("loading.loadingLibrary")} />
-          <span className="ml-2 w-3 h-5 bg-soul-green inline-block blink-cursor"></span>
+          <span className="ml-2 w-2.5 h-5 bg-soul-green inline-block blink-cursor"></span>
         </div>
       </div>
     );
 
   if (isSearching)
     return (
-      <div className="flex items-center justify-center h-full text-app-text-dim font-mono">
-        <span className="text-soul-green">
-          <MatrixText text={t("loading.loadingPlaylist")} />
-        </span>
+      <div
+        className="flex flex-col items-center justify-center min-h-[50vh] text-app-text-dim font-mono p-8"
+        role="status"
+        aria-live="polite"
+        aria-label={t("loading.decryptingPlaylist")}
+      >
+        <div className="text-xl text-soul-green mb-2 lowercase tracking-tight flex items-center">
+          <style>{`
+            @keyframes blink-cursor {
+              0%, 100% { opacity: 1; }
+              50% { opacity: 0; }
+            }
+            .blink-cursor {
+              animation: blink-cursor 1s step-end infinite;
+            }
+          `}</style>
+          <MatrixText text={t("loading.decryptingPlaylist")} />
+          <span className="ml-2 w-2.5 h-5 bg-soul-green inline-block blink-cursor"></span>
+        </div>
+        <p className="text-xs text-app-text-muted lowercase tracking-widest mt-2">
+          {t("sidebar.searching")}
+        </p>
       </div>
     );
 
-  if (error) return <div className="p-8 text-red-500 font-mono">{error}</div>;
+  if (error)
+    return <div className="p-8 text-soul-red font-mono lowercase">{error}</div>;
 
   return (
-    <div className="px-8 pt-0 pb-8">
+    <div className="px-8 pt-2 pb-8">
+      {/* Top Action Bar for DJ Setlist Import */}
+      <div className="flex justify-end mb-6">
+        <button
+          type="button"
+          onClick={() => setIsSetlistModalOpen(true)}
+          data-testid="import-setlist-trigger"
+          aria-label={t("setlist.triggerAria")}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-none border border-soul-green/50 bg-app-bg hover:bg-soul-green hover:text-app-bg text-soul-green text-xs font-mono lowercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-soul-green cursor-pointer"
+        >
+          <span>[{t("setlist.trigger")}]</span>
+        </button>
+      </div>
+
       {/* Added Playlists Section */}
       {addedPlaylists.length > 0 && !isShowingSearch && (
         <section className="mb-12" aria-labelledby="added-playlists-heading">
-          <div className="flex items-center justify-between mb-6 group/header">
+          <div className="flex items-center justify-between mb-6 pb-2 border-b border-app-border group/header">
             <h2
               id="added-playlists-heading"
-              className="text-2xl font-bold text-app-text-main tracking-tight lowercase"
+              className="font-editorial italic text-2xl text-app-text-main tracking-tight lowercase"
             >
               {t("playlist.added")}
             </h2>
             {onClearAdded && (
               <button
                 onClick={onClearAdded}
-                className="text-xs font-mono text-app-text-dim hover:text-red-500 opacity-0 focus:opacity-100 group-hover/header:opacity-100 transition-opacity lowercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-soul-green rounded-sm"
+                className="text-xs font-mono text-app-text-dim hover:text-soul-crimson transition-colors lowercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-soul-green px-2 py-1 border border-transparent hover:border-soul-crimson/50"
                 aria-label={t("playlist.clearAll")}
               >
-                {t("playlist.clearAll")}
+                [{t("playlist.clearAll")}]
               </button>
             )}
           </div>
           <div
-            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6"
+            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
             role="list"
             aria-label={t("playlist.addedList")}
           >
             {addedPlaylists.map((pl) => (
-              <div key={pl.id} role="listitem" className="relative">
+              <div key={pl.id} role="listitem" className="relative group">
                 <button
                   onClick={() => onSelect(pl.id)}
-                  className="w-full text-left group bg-app-surface/40 hover:bg-app-surface-hover transition-all p-4 rounded-md cursor-pointer flex flex-col items-center text-center relative overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-soul-green"
+                  className="w-full text-left bg-app-bg/85 hover:bg-app-surface border border-app-border hover:border-app-text-main transition-colors p-3 rounded-none cursor-pointer flex flex-col items-start text-left relative overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-soul-green"
                   aria-label={t("playlist.selectAdded", { name: pl.name })}
                 >
-                  <div className="w-full aspect-square bg-app-surface shadow-lg mb-4 relative rounded-sm overflow-hidden">
+                  <div className="w-full aspect-square bg-app-surface border border-app-border mb-3 relative rounded-none overflow-hidden">
                     {pl.images && pl.images[0] ? (
                       <img
                         src={pl.images[0].url}
                         alt=""
                         aria-hidden="true"
                         referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
                       />
                     ) : (
                       <div
-                        className="w-full h-full flex items-center justify-center bg-app-surface-hover text-app-text-dim"
+                        className="w-full h-full flex items-center justify-center bg-app-surface text-app-text-dim font-mono"
                         aria-hidden="true"
                       >
-                        <span className="text-4xl">♫</span>
+                        <span className="text-3xl">♫</span>
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
                   </div>
-                  <h3 className="text-app-text-main font-bold text-sm truncate w-full mb-1 lowercase">
+                  <h3 className="text-app-text-main font-mono font-medium text-xs truncate w-full mb-1 lowercase">
                     {pl.name}
                   </h3>
-                  <span className="text-app-text-muted text-xs font-medium lowercase">
+                  <span className="text-app-text-dim font-mono text-[11px] lowercase tabular-nums">
                     {t("playlist.tracksCount", {
                       count: pl.tracks?.total || 0,
                     })}
@@ -175,24 +211,11 @@ export function PlaylistSelector({
                       e.stopPropagation();
                       onRemoveAdded(pl.id);
                     }}
-                    className="absolute top-2 right-2 text-app-text-dim hover:text-red-500 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all z-10 p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-soul-green bg-app-bg/50 rounded-full"
+                    className="absolute top-1.5 right-1.5 text-app-text-dim hover:text-soul-crimson opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity z-10 px-1.5 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-soul-green bg-app-bg/90 border border-app-border rounded-none font-mono text-[11px]"
                     aria-label={t("playlist.remove", { name: pl.name })}
                     title={t("playlist.remove", { name: pl.name })}
                   >
-                    <svg
-                      className="w-4 h-4"
-                      aria-hidden="true"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
+                    x
                   </button>
                 )}
               </div>
@@ -201,115 +224,183 @@ export function PlaylistSelector({
         </section>
       )}
 
-      <h2
-        id="main-playlists-heading"
-        className="text-2xl font-bold mb-6 text-app-text-main tracking-tight lowercase"
-      >
-        {isShowingSearch ? t("playlist.searchResults") : t("playlist.yours")}
-        {isShowingSearch && (
-          <span
-            className="ml-3 text-xs text-app-text-dim font-normal font-mono"
-            aria-label={t("playlist.foundAria", {
-              count: displayPlaylists.length,
-            })}
+      {/* Welcoming Zero-Login Workspace (Shown when no playlists added and not searching) */}
+      {!isAuthenticated && !isShowingSearch && addedPlaylists.length === 0 && (
+        <div
+          className="flex flex-col items-start justify-center min-h-[55vh] max-w-3xl mx-auto px-2 py-8 font-mono"
+          role="region"
+          aria-labelledby="welcome-workspace-title"
+        >
+          <p className="text-[11px] text-soul-green uppercase tracking-[0.18em] mb-2">
+            $ soulmate // p2p audio substrate
+          </p>
+
+          <h2
+            id="welcome-workspace-title"
+            className="font-editorial italic text-4xl md:text-5xl text-app-text-main tracking-tight lowercase mb-4"
           >
-            {t("playlist.foundCount", { count: displayPlaylists.length })}
-          </span>
-        )}
-      </h2>
-      <div
-        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6"
-        role="list"
-        aria-labelledby="main-playlists-heading"
-      >
-        {!isAuthenticated && !isShowingSearch && (
-          <div
-            className="col-span-full flex flex-col items-center justify-center p-12 text-center rounded-lg border border-app-border border-dashed bg-app-surface/20"
-            role="status"
-          >
-            <div
-              className="text-4xl mb-4 text-soul-green/80"
-              aria-hidden="true"
-            >
-              <svg
-                className="w-16 h-16"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.48.66.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141 4.32-1.38 9.841-.719 13.44 1.441.42.3.6.84.3 1.26zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
-              </svg>
+            <MatrixText text={t("workspace.welcomeTitle")} />
+          </h2>
+
+          <p className="text-app-text-muted text-xs max-w-xl mb-8 leading-relaxed lowercase border-l border-soul-crimson pl-3">
+            {t("workspace.welcomeSubtitle")}
+          </p>
+
+          {/* Guidance Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full mb-8 text-left">
+            <div className="bg-app-bg/85 border border-app-border rounded-none p-3.5 transition-colors hover:border-soul-green/60">
+              <div className="text-[11px] font-semibold text-soul-green lowercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <span>+</span>
+                <span>{t("workspace.spotifyGuidance")}</span>
+              </div>
+              <p className="text-[11px] text-app-text-dim font-mono break-all lowercase">
+                {t("workspace.spotifyExample")}
+              </p>
             </div>
-            <p className="text-app-text-dim text-sm mb-6 max-w-sm whitespace-pre-line lowercase">
-              {t("playlist.connectPrompt")}
-            </p>
-            {onLoginRequested && (
-              <button
-                onClick={onLoginRequested}
-                className="bg-soul-green text-app-bg font-bold uppercase text-xs px-6 py-3 rounded-full hover:scale-105 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-soul-green"
-                aria-label={t("playlist.connectSpotify")}
+
+            <div className="bg-app-bg/85 border border-app-border rounded-none p-3.5 transition-colors hover:border-soul-green/60">
+              <div className="text-[11px] font-semibold text-soul-green lowercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <span>+</span>
+                <span>{t("workspace.youtubeGuidance")}</span>
+              </div>
+              <p className="text-[11px] text-app-text-dim font-mono break-all lowercase">
+                {t("workspace.youtubeExample")}
+              </p>
+            </div>
+
+            <div className="bg-app-bg/85 border border-app-border rounded-none p-3.5 transition-colors hover:border-soul-green/60">
+              <div className="text-[11px] font-semibold text-soul-green lowercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <span>+</span>
+                <span>{t("workspace.soundCloudGuidance")}</span>
+              </div>
+              <p className="text-[11px] text-app-text-dim font-mono break-all lowercase">
+                {t("workspace.soundCloudExample")}
+              </p>
+            </div>
+
+            <div className="bg-app-bg/85 border border-app-border rounded-none p-3.5 transition-colors hover:border-soul-green/60">
+              <div className="text-[11px] font-semibold text-soul-green lowercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <span>+</span>
+                <span>{t("workspace.bandcampGuidance")}</span>
+              </div>
+              <p className="text-[11px] text-app-text-dim font-mono break-all lowercase">
+                {t("workspace.bandcampExample")}
+              </p>
+            </div>
+          </div>
+
+          {/* Action Prompt & DJ Setlist Trigger */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-xs text-soul-cyan bg-app-bg border border-app-border px-3.5 py-2 rounded-none lowercase">
+              <span className="w-1.5 h-1.5 rounded-none bg-soul-green animate-pulse" />
+              <span>{t("workspace.pasteHint")}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsSetlistModalOpen(true)}
+              data-testid="import-setlist-trigger-hero"
+              aria-label={t("setlist.triggerAria")}
+              className="inline-flex items-center gap-1.5 text-xs text-app-bg hover:text-app-text-main bg-app-text-main hover:bg-app-bg border border-app-text-main px-4 py-2 rounded-none font-semibold lowercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-soul-green cursor-pointer"
+            >
+              <span>[{t("setlist.trigger")}]</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Playlists Section (Search Results or Authenticated Library) */}
+      {(isShowingSearch || isAuthenticated) && (
+        <section aria-labelledby="main-playlists-heading">
+          <h2
+            id="main-playlists-heading"
+            className="font-editorial italic text-2xl mb-6 pb-2 border-b border-app-border text-app-text-main tracking-tight lowercase"
+          >
+            {isShowingSearch
+              ? t("playlist.searchResults")
+              : t("playlist.yours")}
+            {isShowingSearch && (
+              <span
+                className="ml-3 text-xs text-app-text-dim font-normal font-mono not-italic"
+                aria-label={t("playlist.foundAria", {
+                  count: displayPlaylists.length,
+                })}
               >
-                {t("playlist.connectSpotify")}
-              </button>
+                {t("playlist.foundCount", { count: displayPlaylists.length })}
+              </span>
             )}
-          </div>
-        )}
+          </h2>
 
-        {isAuthenticated &&
-          !isShowingSearch &&
-          displayPlaylists.length === 0 && (
-            <div
-              className="col-span-full text-app-text-dim font-mono lowercase text-center py-12"
-              role="status"
-            >
-              {t("playlist.noPlaylists")}
-            </div>
-          )}
-
-        {isShowingSearch && displayPlaylists.length === 0 && (
           <div
-            className="col-span-full text-app-text-dim font-mono lowercase text-center py-12"
-            role="status"
+            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
+            role="list"
+            aria-labelledby="main-playlists-heading"
           >
-            {t("playlist.noResults")}
-          </div>
-        )}
-
-        {displayPlaylists.map((pl) => (
-          <button
-            key={pl.id}
-            role="listitem"
-            onClick={() => onSelect(pl.id)}
-            className="w-full text-left group bg-app-surface/40 hover:bg-app-surface-hover transition-all p-4 rounded-md cursor-pointer flex flex-col items-center text-center relative overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-soul-green"
-            aria-label={t("playlist.selectAdded", { name: pl.name })}
-          >
-            <div
-              className="w-full aspect-square bg-app-surface shadow-lg mb-4 relative rounded-sm overflow-hidden"
-              aria-hidden="true"
-            >
-              {pl.images && pl.images[0] ? (
-                <img
-                  src={pl.images[0].url}
-                  alt=""
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-app-surface-hover text-app-text-dim">
-                  <span className="text-4xl">♫</span>
+            {isAuthenticated &&
+              !isShowingSearch &&
+              displayPlaylists.length === 0 && (
+                <div
+                  className="col-span-full text-app-text-dim font-mono lowercase text-center py-12"
+                  role="status"
+                >
+                  {t("playlist.noPlaylists")}
                 </div>
               )}
-              {/* Hover highlight only, no play button */}
-              <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-            </div>
-            <h3 className="text-app-text-main font-bold text-sm truncate w-full mb-1 lowercase">
-              {pl.name}
-            </h3>
-            <span className="text-app-text-muted text-xs font-medium lowercase">
-              {t("playlist.tracksCount", { count: pl.tracks?.total || 0 })}
-            </span>
-          </button>
-        ))}
-      </div>
+
+            {isShowingSearch && displayPlaylists.length === 0 && (
+              <div
+                className="col-span-full text-app-text-dim font-mono lowercase text-center py-12"
+                role="status"
+              >
+                {t("playlist.noResults")}
+              </div>
+            )}
+
+            {displayPlaylists.map((pl) => (
+              <button
+                key={pl.id}
+                role="listitem"
+                onClick={() => onSelect(pl.id)}
+                className="w-full text-left group bg-app-bg/85 hover:bg-app-surface border border-app-border hover:border-app-text-main transition-colors p-3 rounded-none cursor-pointer flex flex-col items-start text-left relative overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-soul-green"
+                aria-label={t("playlist.selectAdded", { name: pl.name })}
+              >
+                <div
+                  className="w-full aspect-square bg-app-surface border border-app-border mb-3 relative rounded-none overflow-hidden"
+                  aria-hidden="true"
+                >
+                  {pl.images && pl.images[0] ? (
+                    <img
+                      src={pl.images[0].url}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-app-surface text-app-text-dim font-mono">
+                      <span className="text-3xl">♫</span>
+                    </div>
+                  )}
+                </div>
+                <h3 className="text-app-text-main font-mono font-medium text-xs truncate w-full mb-1 lowercase">
+                  {pl.name}
+                </h3>
+                <span className="text-app-text-dim font-mono text-[11px] lowercase tabular-nums">
+                  {t("playlist.tracksCount", { count: pl.tracks?.total || 0 })}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <SetlistImportModal
+        isOpen={isSetlistModalOpen}
+        onClose={() => setIsSetlistModalOpen(false)}
+        onImportSuccess={(playlist, tracks) => {
+          if (onImportSetlist) {
+            onImportSetlist(playlist, tracks);
+          }
+        }}
+      />
     </div>
   );
 }

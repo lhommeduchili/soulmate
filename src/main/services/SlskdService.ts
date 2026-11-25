@@ -1,4 +1,4 @@
-import { spawn, ChildProcess } from "child_process";
+import { spawn, execFile, execFileSync, ChildProcess } from "child_process";
 import * as path from "path";
 import { join } from "path";
 import { app } from "electron";
@@ -8,6 +8,7 @@ import { createServer } from "net";
 import { store } from "../store";
 import log from "../utils/logger";
 import { PreferencesService } from "./PreferencesService";
+import { decryptSecret, encryptSecret } from "../utils/security";
 
 export class SlskdService {
   private child: ChildProcess | null = null;
@@ -19,27 +20,12 @@ export class SlskdService {
   private async ensureCleanSlate(): Promise<void> {
     log.info("[SlskdService] Ensuring clean slate (killing zombies)...");
     return new Promise((resolve) => {
-      const platform = process.platform;
-      let command = "";
+      const isWin = process.platform === "win32";
+      const file = isWin ? "taskkill" : "pkill";
+      const args = isWin ? ["/F", "/IM", "slskd.exe"] : ["-9", "-x", "slskd"];
 
-      if (platform === "win32") {
-        command = "taskkill /F /IM slskd.exe";
-      } else {
-        // Use -x to match exact process name if possible, but -f match full arg list is safer for our 'slskd'
-        // However, we want to avoid killing OURSELVES if we were named slskd (we are electron)
-        // We want to kill the binary 'slskd'.
-        // 'pkill -x slskd' kills processes named exactly slskd.
-        command = "pkill -9 -f slskd";
-      }
-
-      const killer = spawn(command, { shell: true, stdio: "ignore" });
-
-      killer.on("exit", () => {
+      execFile(file, args, { windowsHide: true }, () => {
         setTimeout(resolve, 1000);
-      });
-
-      killer.on("error", () => {
-        resolve();
       });
     });
   }
@@ -86,20 +72,27 @@ export class SlskdService {
       p2pPort = await this.findAvailablePort(true);
     }
 
-    this.apiKey = crypto.randomBytes(16).toString("hex");
+    this.apiKey = crypto.randomBytes(32).toString("hex");
 
-    // 1b. Get or Create Credentials
-    let user = store.get("soulseek.username");
-    let pass = store.get("soulseek.password");
+    // 1b. Get or Create Credentials (encrypted via OS keychain when available)
+    let user = store.get("soulseek.username") as string | undefined;
+    const rawStoredPass = store.get("soulseek.password") as string | undefined;
+    let pass = decryptSecret(rawStoredPass);
 
     if (!user || !pass) {
       const randomSuffix = crypto.randomBytes(4).toString("hex");
       user = `soulmate_user_${randomSuffix}`;
-      pass = crypto.randomBytes(12).toString("hex");
+      pass = crypto.randomBytes(24).toString("hex");
 
       store.set("soulseek.username", user);
-      store.set("soulseek.password", pass);
+      store.set("soulseek.password", encryptSecret(pass));
       log.info(`[SlskdService] Created new Soulseek credentials for: ${user}`);
+    } else if (rawStoredPass && !rawStoredPass.startsWith("enc:v1:")) {
+      // Opportunistically upgrade legacy plaintext password to encrypted storage
+      const encrypted = encryptSecret(pass);
+      if (encrypted !== rawStoredPass) {
+        store.set("soulseek.password", encrypted);
+      }
     }
 
     // 2. Resolve Download Directory
@@ -121,23 +114,32 @@ export class SlskdService {
       }
     }
 
-    // Escape backslashes for YAML string
-    const yamlPath = downloadDir.replace(/\\/g, "\\\\");
-
+    // JSON.stringify safely escapes quotes, backslashes, and control characters for YAML scalars
     const configContent = `
 web:
+  ip_address: "127.0.0.1"
   port: ${this.port}
   authentication:
-    api_key: "${this.apiKey}"
+    api_key: ${JSON.stringify(this.apiKey)}
 soulseek:
-  username: "${user}"
-  password: "${pass}"
+  username: ${JSON.stringify(user)}
+  password: ${JSON.stringify(pass)}
   listen_port: ${p2pPort}
 directories:
-  downloads: "${yamlPath}"
+  downloads: ${JSON.stringify(downloadDir)}
 `;
 
-    fs.writeFileSync(configPath, configContent, "utf8");
+    fs.writeFileSync(configPath, configContent, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    if (process.platform !== "win32") {
+      try {
+        fs.chmodSync(configPath, 0o600);
+      } catch {
+        // Ignore if filesystem does not support POSIX permissions
+      }
+    }
     log.info(`[SlskdService] Config written to: ${configPath}`);
     log.info(
       `[SlskdService] Starting slskd from: ${binaryPath} on WebPort ${this.port}, P2PPort ${p2pPort}`,
@@ -146,35 +148,39 @@ directories:
     // Explicitly resolve wwwroot path
     const wwwRootPath = join(path.dirname(binaryPath), "wwwroot");
 
-    // Ensure binary is executable (macOS/Linux) and remove quarantine (macOS)
+    // Ensure binary is executable (macOS/Linux) and remove quarantine (macOS) without shell interpolation
     if (process.platform !== "win32") {
       try {
-        // chmod first
-        fs.chmodSync(binaryPath, "755");
-        console.log("[SlskdService] Set executable permissions on binary");
+        fs.chmodSync(binaryPath, 0o755);
 
         if (process.platform === "darwin") {
-          // Remove quarantine attribute if present from binary AND wwwroot
           try {
-            require("child_process").execSync(
-              `xattr -d -r com.apple.quarantine "${binaryPath}"`,
+            execFileSync(
+              "xattr",
+              ["-d", "-r", "com.apple.quarantine", binaryPath],
               { stdio: "ignore" },
             );
-            require("child_process").execSync(
-              `xattr -d -r com.apple.quarantine "${wwwRootPath}"`,
-              { stdio: "ignore" },
-            );
-            console.log("[SlskdService] Removed quarantine attributes");
-          } catch (e) {
-            // Ignore, attribute might not exist
+          } catch {
+            // Attribute might not exist
           }
-
-          // Also chmod wwwroot just in case
-          try {
-            require("child_process").execSync(`chmod -R 755 "${wwwRootPath}"`, {
-              stdio: "ignore",
-            });
-          } catch {}
+          if (fs.existsSync(wwwRootPath)) {
+            try {
+              execFileSync(
+                "xattr",
+                ["-d", "-r", "com.apple.quarantine", wwwRootPath],
+                { stdio: "ignore" },
+              );
+            } catch {
+              // Attribute might not exist
+            }
+            try {
+              execFileSync("chmod", ["-R", "755", wwwRootPath], {
+                stdio: "ignore",
+              });
+            } catch {
+              // Ignore permission error on read-only bundle
+            }
+          }
         }
       } catch (e) {
         log.warn("[SlskdService] Failed to set permissions:", e);

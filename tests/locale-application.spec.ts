@@ -39,6 +39,9 @@ test.describe("Locale application", () => {
   test("applies Spanish UI copy when es-CL is selected", async () => {
     const { app, page } = await launchApp();
 
+    await expect(page.getByTestId("settings-trigger")).toBeVisible({
+      timeout: 15000,
+    });
     await page.getByTestId("settings-trigger").click();
     await page.getByTestId("language-select").selectOption("es-CL");
     await page.getByTestId("settings-dismiss-button").click();
@@ -46,7 +49,7 @@ test.describe("Locale application", () => {
     await expect(page.locator("html")).toHaveAttribute("lang", "es-CL");
     await expect(
       page.getByPlaceholder(
-        "pega una url publica de playlist de spotify o youtube",
+        "pega una url pública de spotify, youtube, soundcloud o bandcamp",
       ),
     ).toBeVisible();
     await expect(

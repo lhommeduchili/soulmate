@@ -18,6 +18,10 @@ protocols:
 
 # Mac Configuration
 mac:
+  icon: build/icon.icns
+  extendInfo:
+    CFBundleName: soulmate
+    CFBundleDisplayName: soulmate
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   hardenedRuntime: true
