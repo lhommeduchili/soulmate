@@ -61,6 +61,7 @@ fi
 # 3. Resolve install directory
 if [ -n "${SOULMATE_INSTALL_DIR:-}" ]; then
   INSTALL_DIR="$SOULMATE_INSTALL_DIR"
+  mkdir -p "$INSTALL_DIR"
 elif [ -w "/Applications" ]; then
   INSTALL_DIR="/Applications"
 else
@@ -76,58 +77,47 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# 5. Query GitHub Releases API over HTTPS (TLS 1.2+)
+# 5. Resolve release tag via GitHub web redirect (avoids GitHub API rate limits)
 if [ "$VERSION" = "latest" ]; then
-  API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+  info "resolving latest release (macOS ${ARCH})..."
+  LATEST_URL="$(curl -fsSLI --proto '=https' --tlsv1.2 \
+    -o /dev/null -w '%{url_effective}' \
+    "https://github.com/${REPO}/releases/latest")" \
+    || fail "failed to resolve latest release from GitHub"
+  TAG_NAME="${LATEST_URL##*/}"
 else
-  API_URL="https://api.github.com/repos/${REPO}/releases/tags/${VERSION}"
+  case "$VERSION" in
+    v*) TAG_NAME="$VERSION" ;;
+    *)  TAG_NAME="v${VERSION}" ;;
+  esac
 fi
 
-info "fetching release metadata (${VERSION}, macOS ${ARCH})..."
-RELEASE_JSON="${TMP_DIR}/release.json"
-curl -fsSL --proto '=https' --tlsv1.2 \
-  -H "Accept: application/vnd.github+json" \
-  -H "User-Agent: soulmate-installer" \
-  "$API_URL" -o "$RELEASE_JSON" \
-  || fail "failed to fetch release metadata from ${API_URL}"
+[ -n "$TAG_NAME" ] && [ "$TAG_NAME" != "releases" ] && [ "$TAG_NAME" != "latest" ] \
+  || fail "could not determine release tag (resolved: '${TAG_NAME}')"
 
-TAG_NAME="$(grep -m1 '"tag_name"' "$RELEASE_JSON" | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
-[ -n "$TAG_NAME" ] || fail "could not determine release version from GitHub API response"
-
-# Extract browser_download_url entries
-URLS_FILE="${TMP_DIR}/urls.txt"
-grep '"browser_download_url"' "$RELEASE_JSON" \
-  | sed -E 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' \
-  > "$URLS_FILE"
+VERSION_NUM="${TAG_NAME#v}"
+BASE_DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}"
 
 if [ "$ARCH" = "arm64" ]; then
-  ASSET_URL="$(grep -E '/soulmate-.*-arm64-mac\.zip$' "$URLS_FILE" | head -n1 || true)"
+  ASSET_NAME="${APP_NAME}-${VERSION_NUM}-arm64-mac.zip"
 else
-  ASSET_URL="$(grep -E '/soulmate-.*-mac\.zip$' "$URLS_FILE" | grep -v 'arm64' | head -n1 || true)"
+  ASSET_NAME="${APP_NAME}-${VERSION_NUM}-mac.zip"
 fi
 
-[ -n "$ASSET_URL" ] || fail "no macOS ${ARCH} .zip release asset found for ${TAG_NAME}"
-ASSET_NAME="$(basename "$ASSET_URL")"
-
-CHECKSUMS_URL="$(grep -E '/SHA256SUMS\.txt$' "$URLS_FILE" | head -n1 || true)"
+ASSET_URL="${BASE_DOWNLOAD_URL}/${ASSET_NAME}"
+CHECKSUMS_URL="${BASE_DOWNLOAD_URL}/SHA256SUMS.txt"
 
 # 6. Download archive
 ZIP_PATH="${TMP_DIR}/${ASSET_NAME}"
 info "downloading ${ASSET_NAME} (${TAG_NAME})..."
 curl -fL --progress-bar --proto '=https' --tlsv1.2 \
-  -H "User-Agent: soulmate-installer" \
   "$ASSET_URL" -o "$ZIP_PATH" \
   || fail "failed to download ${ASSET_URL}"
 
-# 7. Verify SHA-256 checksum when published
-if [ -n "$CHECKSUMS_URL" ]; then
-  CHECKSUMS_PATH="${TMP_DIR}/SHA256SUMS.txt"
+# 7. Verify SHA-256 checksum when published on the release
+CHECKSUMS_PATH="${TMP_DIR}/SHA256SUMS.txt"
+if curl -fsSL --proto '=https' --tlsv1.2 "$CHECKSUMS_URL" -o "$CHECKSUMS_PATH" 2>/dev/null; then
   info "verifying SHA-256 checksum..."
-  curl -fsSL --proto '=https' --tlsv1.2 \
-    -H "User-Agent: soulmate-installer" \
-    "$CHECKSUMS_URL" -o "$CHECKSUMS_PATH" \
-    || fail "failed to download SHA256SUMS.txt"
-
   EXPECTED_HASH="$(awk -v name="$ASSET_NAME" '$2 == name || $2 == "*"name { print $1; exit }' "$CHECKSUMS_PATH")"
   [ -n "$EXPECTED_HASH" ] || fail "checksum entry for ${ASSET_NAME} not found in SHA256SUMS.txt"
 
